@@ -1,0 +1,77 @@
+/* common style for all widgets */
+/* default GTK theme will be disabled */
+* {
+    background-image: none;
+    border-style: none;
+    background-color: rgba(0, 0, 0, 0);
+    min-width: 0px;
+    min-height: 0px;
+}
+
+/* window (transparent by default) */
+window {
+    padding: 3px;
+}
+
+/* vertical box of application buttons */
+box .button {
+    box-shadow: 0px 0px 3px 0px rgba(0, 0, 0, 0.5);
+    border-radius: 12px;
+    background-color: rgba(50, 50, 60, 0.9);
+}
+
+/* separator of application buttons */
+separator {
+    background-color: #777;
+    padding: 0.5px 0px;
+    margin: 0px 8px;
+}
+
+/* application icon*/
+image {
+    margin: 10px;
+}
+
+/* application button */
+button.app {
+    border-radius: 20%;
+    border: none;
+    padding: 0px;
+}
+
+/* application button hovered */
+button.app:hover {
+    border-radius: 50%;
+    background-color: rgba(100, 100, 120, 1.0);
+    transition: 0.15s;
+}
+
+/* application button pressed */
+button.app:active {
+    border-radius: 50%;
+    background-color: rgba(160, 160, 180, 1.0);
+    transition: 0.1s;
+}
+
+/* expansion button */
+button.expand {
+    border: none;
+    padding: 10px;
+    border-radius: 20px;
+    background-color: rgba(100, 100, 100, 0.25);
+    transition: 0.1s;
+    font-weight: bold;
+    color: #fafafa;
+}
+
+/* expansion button collapsed */
+button.expand.collapsed {
+    background-color: rgba(100, 100, 100, 0.5);
+    padding: 4px;
+}
+
+/* expansion button hovered */
+button.expand:hover {
+    background-color: rgba(100, 100, 100, 0.75);
+    transition: 0.1s;
+}
