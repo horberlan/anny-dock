@@ -1,0 +1,61 @@
+export struct ClientData {
+    title: string,
+    class: string,
+    address: string,
+    has_icon: bool,
+    icon: image,
+}
+
+export component AppWindow inherits Window {
+    no-frame: true;
+    width: 300px;
+    height: 60px;
+    background: transparent;
+    in property <[ClientData]> clients;
+    callback focus-window(string);
+
+    Rectangle {
+        background: #1a1a1aaa;
+        border-radius: 6px;
+        HorizontalLayout {
+            padding: 6px;
+            spacing: 6px;
+            alignment: center;
+            for client in clients: TouchArea {
+                width: 48px;
+                height: 48px;
+                clicked => {
+                    focus-window(client.address)
+                }
+                VerticalLayout {
+                    alignment: center;
+                    if client.has_icon: Image {
+                        source: client.icon;
+                        width: 48px;
+                        height: 48px;
+                    }
+                    if !client.has_icon: Text {
+                        text: client.class;
+                        color: white;
+                        font-size: 12px;
+                        horizontal-alignment: center;
+                    }
+                }
+
+                Rectangle {
+                    opacity: parent.has-hover ? 1 : 0;
+                    y: parent.height + 4px;
+                    background: #1a1a1aee;
+                    border-radius: 4px;
+                    padding: 4px;
+                    Text {
+                        text: client.title;
+                        color: white;
+                        font-size: 12px;
+                        horizontal-alignment: center;
+                    }
+                }
+            }
+        }
+    }
+}

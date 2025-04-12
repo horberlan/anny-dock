@@ -1,9 +1,13 @@
-use gtk4::prelude::*;
-use gtk4::{Application, ApplicationWindow, Box as GtkBox, Button, CssProvider, Orientation, StyleContext, Image, gdk};
-use std::process::Command;
+use image::io::Reader as ImageReader;
 use serde::Deserialize;
+use slint::{Image, SharedPixelBuffer, SharedString, VecModel};
+use std::path::Path;
+use std::process::Command;
+use std::rc::Rc;
 
-#[derive(Deserialize)]
+slint::include_modules!();
+
+#[derive(Deserialize, Debug, Clone)]
 struct Client {
     class: String,
     title: String,
@@ -15,87 +19,114 @@ fn load_clients() -> Vec<Client> {
     let output = Command::new("hyprctl")
         .args(["clients", "-j"])
         .output()
-        .expect("Failed to run hyprctl");
+        .expect("failed to run hyprctl");
 
     serde_json::from_slice(&output.stdout).unwrap_or_default()
 }
 
 fn focus_client(address: &str) {
-    let _ = Command::new("hyprctl")
+    let full_address = format!("address:{}", address.trim_start_matches("address:"));
+    println!("🔘 focusing window: {}", full_address);
+
+    let output = Command::new("hyprctl")
         .arg("dispatch")
         .arg("focuswindow")
-        .arg(address)
-        .output();
+        .arg(&full_address)
+        .output()
+        .expect("failed to execute hyprctl");
+
+    println!(
+        "ℹ️ command executed: hyprctl dispatch focuswindow {}",
+        full_address
+    );
+
+    if !output.status.success() {
+        eprintln!(
+            "❌ error focusing window: {}\nFull output:\n{}",
+            String::from_utf8_lossy(&output.stderr),
+            String::from_utf8_lossy(&output.stdout)
+        );
+    } else {
+        println!("✅ window successfully focused!");
+    }
 }
 
 fn get_icon_for_class(class: &str) -> Option<Image> {
     let lowercase = class.to_lowercase();
+    // todo: change to a real icon way...
     let icon_path = format!("/usr/share/icons/hicolor/48x48/apps/{}.png", lowercase);
 
-    if std::path::Path::new(&icon_path).exists() {
-        Some(Image::from_file(icon_path))
-    } else {
-        None
+    if Path::new(&icon_path).exists() {
+        if let Ok(reader) = ImageReader::open(&icon_path) {
+            if let Ok(img) = reader.decode() {
+                let rgba_img = img.to_rgba8();
+                let (width, height) = rgba_img.dimensions();
+
+                let mut buffer = SharedPixelBuffer::<slint::Rgba8Pixel>::new(width, height);
+                let buffer_slice = buffer.make_mut_slice();
+                let raw_data = rgba_img.into_raw();
+
+                buffer_slice.copy_from_slice(bytemuck::cast_slice(&raw_data));
+
+                return Some(Image::from_rgba8(buffer));
+            }
+        }
     }
+    None
 }
 
-fn main() {
-    let app = Application::builder()
-        .application_id("dev.pdock")
-        .build();
+fn main() -> Result<(), slint::PlatformError> {
+    let ui = AppWindow::new()?;
 
-    app.connect_activate(|app| {
-        let clients = load_clients();
-        let provider = CssProvider::new();
-        provider.load_from_data(include_str!("./style.css"));
+    let clients_data = load_clients();
+    let clients_model = Rc::new(VecModel::default());
 
-        // Ainda é válido no Rust:
-        StyleContext::add_provider_for_display(
-            &gdk::Display::default().unwrap(),
-            &provider,
-            gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
-        );
+    for client in clients_data {
+        let icon = get_icon_for_class(&client.class);
+        let address = client.address.clone();
 
-        let button_box = GtkBox::new(Orientation::Horizontal, 6);
-        button_box.set_margin_top(6);
-        button_box.set_margin_bottom(6);
-        button_box.set_margin_start(6);
-        button_box.set_margin_end(6);
+        let client_data = ClientData {
+            title: SharedString::from(client.title),
+            class: SharedString::from(client.class),
+            address: SharedString::from(address),
+            has_icon: icon.is_some(),
+            icon: icon.unwrap_or_default(),
+        };
 
-        for client in clients {
-            let btn = Button::new();
-            btn.set_tooltip_text(Some(&client.title));
+        clients_model.push(client_data);
+    }
 
-            if let Some(icon) = get_icon_for_class(&client.class) {
-                btn.set_child(Some(&icon));
-            } else {
-                btn.set_label(&client.class);
+    ui.set_clients(clients_model.into());
+
+    let ui_handle = ui.as_weak();
+    ui.on_focus_window(move |address| {
+        let address_str = address.to_string();
+        println!("🖱️ click detected on window: {}", address_str);
+
+        focus_client(&address_str);
+
+        if let Some(ui) = ui_handle.upgrade() {
+            let clients_data = load_clients();
+            let clients_model = Rc::new(VecModel::default());
+
+            for client in clients_data {
+                let icon = get_icon_for_class(&client.class);
+                let address = client.address.clone();
+
+                let client_data = ClientData {
+                    title: SharedString::from(client.title),
+                    class: SharedString::from(client.class),
+                    address: SharedString::from(address),
+                    has_icon: icon.is_some(),
+                    icon: icon.unwrap_or_default(),
+                };
+
+                clients_model.push(client_data);
             }
 
-            let address = client.address.clone();
-            btn.connect_clicked(move |_| {
-                focus_client(&address);
-            });
-
-            button_box.append(&btn);
+            ui.set_clients(clients_model.into());
         }
-
-        let window = ApplicationWindow::builder()
-            .application(app)
-            .title("pdock")
-            .child(&button_box)
-            .build();
-
-        // 🧼 Janela limpa
-        window.set_decorated(false);
-        window.fullscreen();
-
-        // 💡 Transparência no Wayland: use o CSS mesmo
-        let widget: gtk4::Widget = window.clone().upcast();
-        widget.set_visible(true);
-
-        window.present();
     });
 
-    app.run();
+    ui.run()
 }
