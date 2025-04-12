@@ -1,5 +1,5 @@
 use gtk4::prelude::*;
-use gtk4::{Application, ApplicationWindow, Box as GtkBox, Button, CssProvider, Orientation, StyleContext, Image};
+use gtk4::{Application, ApplicationWindow, Box as GtkBox, Button, CssProvider, Orientation, StyleContext, Image, gdk};
 use std::process::Command;
 use serde::Deserialize;
 
@@ -29,7 +29,6 @@ fn focus_client(address: &str) {
 }
 
 fn get_icon_for_class(class: &str) -> Option<Image> {
-    // change here to a real icon usage
     let lowercase = class.to_lowercase();
     let icon_path = format!("/usr/share/icons/hicolor/48x48/apps/{}.png", lowercase);
 
@@ -48,10 +47,11 @@ fn main() {
     app.connect_activate(|app| {
         let clients = load_clients();
         let provider = CssProvider::new();
-        provider.load_from_data(include_str!("style.css"));
+        provider.load_from_data(include_str!("./style.css"));
 
+        // Ainda é válido no Rust:
         StyleContext::add_provider_for_display(
-            &gtk4::gdk::Display::default().unwrap(),
+            &gdk::Display::default().unwrap(),
             &provider,
             gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
         );
@@ -84,9 +84,15 @@ fn main() {
             .application(app)
             .title("pdock")
             .child(&button_box)
-            .default_width(400)
-            .default_height(64)
             .build();
+
+        // 🧼 Janela limpa
+        window.set_decorated(false);
+        window.fullscreen();
+
+        // 💡 Transparência no Wayland: use o CSS mesmo
+        let widget: gtk4::Widget = window.clone().upcast();
+        widget.set_visible(true);
 
         window.present();
     });
