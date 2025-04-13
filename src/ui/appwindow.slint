@@ -8,25 +8,60 @@ export struct ClientData {
 
 export component AppWindow inherits Window {
     no-frame: true;
-    width: 300px;
-    height: 60px;
+    always-on-top: true;
+    full-screen: true;
     background: transparent;
     in property <[ClientData]> clients;
     callback focus-window(string);
 
     Rectangle {
-        background: #1a1a1aaa;
+        width: parent.width;
+        background: transparent;
         border-radius: 6px;
-        HorizontalLayout {
+        Rectangle {
             padding: 6px;
-            spacing: 6px;
-            alignment: center;
-            for client in clients: TouchArea {
+            background: transparent;
+            for client[index] in clients: Rectangle {
                 width: 48px;
                 height: 48px;
-                clicked => {
-                    focus-window(client.address)
+                x: index * 52px;
+                y: parent.height - 120px - index * 42px;
+                background: transparent;
+
+                animate y {
+                    duration: 150ms;
+                    easing: ease-in-out;
                 }
+
+                drop-shadow-offset-x: 2px;
+                drop-shadow-offset-y: 2px;
+                drop-shadow-blur: 3px;
+                drop-shadow-color: #00000066;
+                property <bool> is-hovered: false;
+
+                states [
+                    hover-state when is-hovered: {
+                        y: parent.height - 60px - index * 42px - 10px;
+                    }
+                ]
+                TouchArea {
+                    width: 100%;
+                    height: 100%;
+                    mouse-cursor: pointer;
+
+                    pointer-event(event) => {
+                        if (event.kind == PointerEventKind.up) {
+                            parent.is-hovered = true;
+                        }
+                        if (event.kind == PointerEventKind.down) {
+                            parent.is-hovered = false;
+                        }
+                    }
+                    clicked => {
+                        focus-window(client.address)
+                    }
+                }
+
                 VerticalLayout {
                     alignment: center;
                     if client.has_icon: Image {
@@ -43,9 +78,9 @@ export component AppWindow inherits Window {
                 }
 
                 Rectangle {
-                    opacity: parent.has-hover ? 1 : 0;
+                    opacity: parent.is-hovered ? 1 : 0;
                     y: parent.height + 4px;
-                    background: #1a1a1aee;
+                    background: transparent;
                     border-radius: 4px;
                     padding: 4px;
                     Text {
