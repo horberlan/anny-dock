@@ -1,22 +1,49 @@
+use bevy::prelude::*;
+use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+use bevy::render::texture::ImageSampler;
+use bevy::window::{WindowPlugin, PrimaryWindow};
 use image::io::Reader as ImageReader;
+use resvg::{tiny_skia, usvg};
 use serde::Deserialize;
-use slint::{Image, SharedPixelBuffer, SharedString, VecModel};
 use std::path::Path;
 use std::process::Command;
-use std::rc::Rc;
-
 use xdgkit::icon_finder;
-use resvg::tiny_skia;
-use resvg::usvg;
-
-slint::include_modules!();
 
 #[derive(Deserialize, Debug, Clone)]
 struct Client {
     class: String,
     title: String,
-    pid: i32,
     address: String,
+    #[serde(default)]
+    name: Option<String>,
+}
+
+#[derive(Component)]
+struct ClientIcon;
+
+#[derive(Component)]
+struct ClientAddress(String);
+
+#[derive(Resource)]
+struct ClientList(Vec<Client>);
+
+fn main() {
+    App::new()
+        .add_plugins(DefaultPlugins.set(WindowPlugin {
+            primary_window: Some(Window {
+                transparent: true,
+                decorations: false,
+                ..default()
+            }),
+            ..default()
+        }).set(ImagePlugin {
+            default_sampler: ImageSampler::nearest_descriptor(),
+        }))
+        .insert_resource(ClearColor(Color::NONE))
+        .insert_resource(ClientList(load_clients()))
+        .add_startup_system(setup)
+        .add_system(icon_click_system)
+        .run();
 }
 
 fn load_clients() -> Vec<Client> {
@@ -28,136 +55,152 @@ fn load_clients() -> Vec<Client> {
     serde_json::from_slice(&output.stdout).unwrap_or_default()
 }
 
-fn focus_client(address: &str) {
-    let full_address = format!("address:{}", address.trim_start_matches("address:"));
-    println!("🔘 focusing window: {}", full_address);
-
-    let output = Command::new("hyprctl")
-        .arg("dispatch")
-        .arg("focuswindow")
-        .arg(&full_address)
-        .output()
-        .expect("failed to execute hyprctl");
-
-    println!(
-        "ℹ️ command executed: hyprctl dispatch focuswindow {}",
-        full_address
-    );
-
-    if !output.status.success() {
-        eprintln!(
-            "❌ error focusing window: {}\nFull output:\n{}",
-            String::from_utf8_lossy(&output.stderr),
-            String::from_utf8_lossy(&output.stdout)
-        );
-    } else {
-        println!("✅ window successfully focused!");
-    }
-}
-
-fn get_icon_for_class(class: &str) -> Option<Image> {
+fn get_icon_path(class: &str) -> Option<String> {
     let lowercase = class.to_lowercase();
     let icon_path = icon_finder::find_icon(lowercase, 48, 1)?;
-    println!("path do icone: {}", &icon_path.to_string_lossy());
-    
-    if icon_path.extension().map_or(false, |ext| ext == "svg") {
-        return load_svg_image(&icon_path);
+    Some(icon_path.to_string_lossy().to_string())
+}
+
+fn load_icon(path: &Path) -> Option<bevy::prelude::Image> {
+    if path.extension().map_or(false, |ext| ext == "svg") {
+        return load_svg_image(path);
     } else {
-        if let Ok(reader) = ImageReader::open(&icon_path) {
+        if let Ok(reader) = ImageReader::open(path) {
             if let Ok(img) = reader.decode() {
                 let rgba_img = img.to_rgba8();
                 let (width, height) = rgba_img.dimensions();
-                let mut buffer =
-                    SharedPixelBuffer::<slint::Rgba8Pixel>::new(width, height);
-                let buffer_slice = buffer.make_mut_slice();
-                let raw_data = rgba_img.into_raw();
-                buffer_slice.copy_from_slice(bytemuck::cast_slice(&raw_data));
-                return Some(Image::from_rgba8(buffer));
+                let data = rgba_img.into_raw();
+
+                let image = Image::new_fill(
+                    Extent3d {
+                        width,
+                        height,
+                        depth_or_array_layers: 1,
+                    },
+                    TextureDimension::D2,
+                    &data,
+                    TextureFormat::Rgba8UnormSrgb,
+                );
+                return Some(image);
             }
         }
     }
     None
 }
 
-fn load_svg_image(path: &Path) -> Option<Image> {
+fn load_svg_image(path: &Path) -> Option<bevy::prelude::Image> {
     let svg_data = std::fs::read(path).ok()?;
-    
     let opt = usvg::Options::default();
     let tree = usvg::Tree::from_data(&svg_data, &opt).ok()?;
-    
+
     let pixmap_size = 48;
-    
     let mut pixmap = tiny_skia::Pixmap::new(pixmap_size, pixmap_size)?;
-    
     resvg::render(
         &tree,
         usvg::FitTo::Size(pixmap_size, pixmap_size),
-        resvg::tiny_skia::Transform::default(),
-        pixmap.as_mut()
+        tiny_skia::Transform::default(),
+        pixmap.as_mut(),
     )?;
-    
-    let mut buffer =
-        SharedPixelBuffer::<slint::Rgba8Pixel>::new(pixmap.width(), pixmap.height());
-    let buffer_slice = buffer.make_mut_slice();
-    
-    let pixmap_data = pixmap.data();
-    buffer_slice.copy_from_slice(bytemuck::cast_slice(pixmap_data));
-    
-    Some(Image::from_rgba8(buffer))
+
+    let data = pixmap.data().to_vec();
+    let image = Image::new_fill(
+        Extent3d {
+            width: pixmap_size,
+            height: pixmap_size,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        &data,
+        TextureFormat::Rgba8UnormSrgb,
+    );
+    Some(image)
 }
 
-fn main() -> Result<(), slint::PlatformError> {
-    let ui = AppWindow::new()?;
+fn setup(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut images: ResMut<Assets<Image>>,
+    client_list: Res<ClientList>,
+) {
+    commands.spawn(Camera2dBundle::default());
 
-    let clients_data = load_clients();
-    let clients_model = Rc::new(VecModel::default());
+    let mut x_offset = -200.0;
 
-    for client in clients_data {
-        let icon = get_icon_for_class(&client.class);
-        let address = client.address.clone();
+    for client in &client_list.0 {
+        let icon_path = get_icon_path(&client.class);
+        if let Some(path_str) = icon_path {
+            let path = Path::new(&path_str);
+            if let Some(img) = load_icon(path) {
+                let handle = images.add(img);
 
-        let client_data = ClientData {
-            title: SharedString::from(client.title),
-            class: SharedString::from(client.class),
-            address: SharedString::from(address),
-            has_icon: icon.is_some(),
-            icon: icon.unwrap_or_default(),
-        };
-
-        clients_model.push(client_data);
-    }
-
-    ui.set_clients(clients_model.into());
-
-    let ui_handle = ui.as_weak();
-    ui.on_focus_window(move |address| {
-        let address_str = address.to_string();
-        println!("🖱️ click detected on window: {}", address_str);
-
-        focus_client(&address_str);
-
-        if let Some(ui) = ui_handle.upgrade() {
-            let clients_data = load_clients();
-            let clients_model = Rc::new(VecModel::default());
-
-            for client in clients_data {
-                let icon = get_icon_for_class(&client.class);
-                let address = client.address.clone();
-
-                let client_data = ClientData {
-                    title: SharedString::from(client.title),
-                    class: SharedString::from(client.class),
-                    address: SharedString::from(address),
-                    has_icon: icon.is_some(),
-                    icon: icon.unwrap_or_default(),
-                };
-
-                clients_model.push(client_data);
+                commands
+                    .spawn(SpriteBundle {
+                        texture: handle.clone(),
+                        transform: Transform::from_xyz(x_offset, 0.0, 0.0),
+                        ..default()
+                    })
+                    .insert(ClientIcon)
+                    .insert(ClientAddress(client.address.clone()))
+                    .insert(Name::new(client.name.clone().unwrap_or(client.class.clone())));
             }
-
-            ui.set_clients(clients_model.into());
         }
-    });
 
-    ui.run()
+        // Nome do app
+        commands.spawn(Text2dBundle {
+            text: Text::from_section(
+                client.name.clone().unwrap_or(client.class.clone()),
+                TextStyle {
+                    font: asset_server.load("fonts/FiraSans-Bold.ttf"),
+                    font_size: 14.0,
+                    color: Color::WHITE,
+                },
+            )
+            .with_alignment(TextAlignment::Center),
+            transform: Transform::from_xyz(x_offset, 32.0, 1.0),
+            ..default()
+        });
+
+        x_offset += 64.0;
+    }
+}
+
+fn icon_click_system(
+    buttons: Res<Input<MouseButton>>,
+    windows: Query<&Window, With<PrimaryWindow>>, // Corrigido para usar PrimaryWindow
+    q_camera: Query<(&Camera, &GlobalTransform)>,
+    q_icons: Query<(&Transform, &ClientAddress), With<ClientIcon>>,
+) {
+    if buttons.just_pressed(MouseButton::Left) {
+        let window = windows.single();
+        if let Some(cursor_pos) = window.cursor_position() {
+            let (camera, camera_transform) = q_camera.single();
+
+            if let Some(world_pos) = camera.viewport_to_world_2d(camera_transform, cursor_pos) {
+                for (transform, address) in &q_icons {
+                    let pos = transform.translation.truncate();
+                    let size = Vec2::splat(48.0);
+                    let rect = Rect::from_center_size(pos, size);
+                    if rect.contains(world_pos) {
+                        println!("🔘 Clicked on {}", address.0);
+                        focus_client(&address.0);
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn focus_client(address: &str) {
+    let full_address = format!("address:{}", address.trim_start_matches("address:"));
+    
+    let output = Command::new("hyprctl")
+        .args(["dispatch", "focuswindow", &full_address])
+        .output()
+        .expect("failed to execute hyprctl");
+
+    if output.status.success() {
+        println!("✅ Focused window: {}", full_address);
+    } else {
+        eprintln!("❌ Failed to focus window: {}. Error: {}", full_address, String::from_utf8_lossy(&output.stderr));
+    }
 }

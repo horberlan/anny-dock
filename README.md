@@ -1,3 +1,3 @@
-# anny-dock-slint 
+# anny-dock-bevy 
 
-...A hyprland dock
+...A hyprland app dock
