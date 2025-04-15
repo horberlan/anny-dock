@@ -63,6 +63,7 @@ struct IconPositions(HashMap<Entity, (Vec3, Vec3)>);
 struct MainCamera;
 
 static FONT_PATH: &str = "/usr/share/fonts/VictorMono/VictorMonoNerdFont-Medium.ttf";
+static FALLBACK_ICON_PATH: &str = "assets/dockIcon.svg";
 
 fn main() {
     App::new()
@@ -127,10 +128,15 @@ fn load_clients() -> Vec<Client> {
     serde_json::from_slice(&output.stdout).unwrap_or_default()
 }
 
-fn get_icon_path(class: &str) -> Option<String> {
+fn get_icon_path(class: &str) -> String {
     let lowercase = class.to_lowercase();
-    let icon_path = icon_finder::find_icon(lowercase, 48, 1)?;
-    Some(icon_path.to_string_lossy().to_string())
+    match icon_finder::find_icon(lowercase, 56, 1) {
+        Some(path) => path.to_string_lossy().to_string(),
+        None => {
+            println!("Warning: ⚠️ No icons found for {}, using fallback", class);
+            FALLBACK_ICON_PATH.to_string()
+        }
+    }
 }
 
 fn load_icon(path: &Path) -> Option<Image> {
@@ -165,7 +171,7 @@ fn load_svg_image(path: &Path) -> Option<Image> {
     let opt = usvg::Options::default();
     let tree = usvg::Tree::from_data(&svg_data, &opt).ok()?;
 
-    let pixmap_size = 48;
+    let pixmap_size = 56;
     let mut pixmap = tiny_skia::Pixmap::new(pixmap_size, pixmap_size)?;
     resvg::render(
         &tree,
@@ -226,68 +232,64 @@ fn setup(
 
     for (index, client) in client_list.0.iter().enumerate() {
         let icon_path = get_icon_path(&client.class);
-        if let Some(path_str) = icon_path {
-            let path = Path::new(&path_str);
-            if let Some(img) = load_icon(path) {
-                let handle = images.add(img);
+        let path = Path::new(&icon_path);
+        
+        if let Some(img) = load_icon(path) {
+            let handle = images.add(img);
 
-                // position and icon scale
-                let _z_index = clients_count - index - 1;
-                let offset = direction * (index as f32 * spacing);
-                let pos = start_pos + offset;
-                let x = pos.x;
-                let y = pos.y;
-                let z = -(index as f32 * z_spacing);
+            let _z_index = clients_count - index - 1;
+            let offset = direction * (index as f32 * spacing);
+            let pos = start_pos + offset;
+            let x = pos.x;
+            let y = pos.y;
+            let z = -(index as f32 * z_spacing);
 
-                let scale = base_scale * scale_factor.powi(index as i32);
+            let scale = base_scale * scale_factor.powi(index as i32);
 
-                let icon_entity = commands
-                    .spawn(SpriteBundle {
-                        texture: handle.clone(),
-                        transform: Transform {
-                            translation: Vec3::new(x, y, z),
-                            scale: Vec3::splat(scale),
-                            ..default()
-                        },
+            let icon_entity = commands
+                .spawn(SpriteBundle {
+                    texture: handle.clone(),
+                    transform: Transform {
+                        translation: Vec3::new(x, y, z),
+                        scale: Vec3::splat(scale),
                         ..default()
-                    })
-                    .insert(ClientIcon)
-                    .insert(ClientAddress(client.address.clone()))
-                    .insert(HoverTarget {
-                        original_x: x,
-                        original_y: y,
-                        original_z: z,
-                        original_scale: scale,
-                        index,
-                        is_hovered: false,
-                    })
-                    .insert(Name::new(client.name.clone().unwrap_or(client.class.clone())))
-                    .id();
+                    },
+                    ..default()
+                })
+                .insert(ClientIcon)
+                .insert(ClientAddress(client.address.clone()))
+                .insert(HoverTarget {
+                    original_x: x,
+                    original_y: y,
+                    original_z: z,
+                    original_scale: scale,
+                    index,
+                    is_hovered: false,
+                })
+                .insert(Name::new(client.name.clone().unwrap_or(client.class.clone())))
+                .id();
 
-                if show_titles.0 {
-                    commands.spawn(Text2dBundle {
-                        text: Text::from_section(
-                            client.name.clone().unwrap_or(client.class.clone()),
-                            TextStyle {
-                                font: asset_server.load(FONT_PATH),
-                                font_size: 12.0 * scale,
-                                color: Color::WHITE,
-                            },
-                        )
-                        .with_alignment(TextAlignment::Center),
-                        transform: Transform {
-                            translation: Vec3::new(x, y - 30.0 * scale, z - 0.01),
-                            scale: Vec3::splat(scale),
-                            ..default()
+            if show_titles.0 {
+                commands.spawn(Text2dBundle {
+                    text: Text::from_section(
+                        client.name.clone().unwrap_or(client.class.clone()),
+                        TextStyle {
+                            font: asset_server.load(FONT_PATH),
+                            font_size: 12.0 * scale,
+                            color: Color::WHITE,
                         },
+                    )
+                    .with_alignment(TextAlignment::Center),
+                    transform: Transform {
+                        translation: Vec3::new(x, y - 30.0 * scale, z - 0.01),
+                        scale: Vec3::splat(scale),
                         ..default()
-                    }).insert(IconText(icon_entity));
-                }
-            } else {
-                println!("Error: ❌ Failed to load icon for {}", client.class);
+                    },
+                    ..default()
+                }).insert(IconText(icon_entity));
             }
         } else {
-            println!("Warning: ⚠️ No icons found for {}", client.class);
+            println!("Error: ❌ Failed to load icon for {}", client.class);
         }
     }
 }
