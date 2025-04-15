@@ -1,13 +1,10 @@
 [package]
-name = "anny-dock-slint"
+name = "anny-dock"
 version = "0.0.1"
 edition = "2021"
 
-[build-dependencies]
-slint-build = "1.4.1"
-
 [dependencies]
-slint = "1.4.1"
+bevy = "0.10"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 image = "0.24"
