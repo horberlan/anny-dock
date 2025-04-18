@@ -1,14 +1,15 @@
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy::render::texture::{Image, ImageSampler};
-use bevy::window::{Window, WindowPlugin, PrimaryWindow};
-use image::io::Reader as ImageReader;
+use bevy::window::{PrimaryWindow, Window, WindowPlugin};
 use bevy_svg::prelude::*;
+
+use image::io::Reader as ImageReader;
 use resvg::{tiny_skia, usvg};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::Path;
 use std::process::Command;
-use std::collections::HashMap;
 use xdgkit::icon_finder;
 
 #[derive(Deserialize, Debug, Clone)]
@@ -73,10 +74,12 @@ struct MainCamera;
 
 static FONT_PATH: &str = "/usr/share/fonts/VictorMono/VictorMonoNerdFont-Medium.ttf";
 static FALLBACK_ICON_PATH: &str = "assets/dockIcon.svg";
+static ICON_PIN_PATH: &str = "pin-stroke-rounded.svg";
 const ICON_SIZE: f32 = 56.0;
 
 fn main() {
     App::new()
+        .insert_resource(Msaa::Sample4)
         .add_plugins(
             DefaultPlugins
                 .set(WindowPlugin {
@@ -92,10 +95,11 @@ fn main() {
                     ..default()
                 }),
         )
+        .add_plugins(SvgPlugin)
         .insert_resource(ClearColor(Color::NONE))
         .insert_resource(ClientList(load_clients()))
         .insert_resource(IconPositions::default())
-        .insert_resource(ShowTitles(true))
+        .insert_resource(ShowTitles(false))
         .insert_resource(UiState::default())
         .insert_resource(load_favorites())
         .add_systems(Startup, setup)
@@ -117,10 +121,7 @@ fn main() {
         .run();
 }
 
-fn cleanup_duplicate_cameras(
-    mut commands: Commands,
-    query: Query<(Entity, &MainCamera)>,
-) {
+fn cleanup_duplicate_cameras(mut commands: Commands, query: Query<(Entity, &MainCamera)>) {
     let mut found_camera = false;
     for (entity, _) in query.iter() {
         if found_camera {
@@ -228,13 +229,15 @@ fn setup(
     show_titles: Res<ShowTitles>,
     favorites: Res<Favorites>,
 ) {
-    commands.spawn(Camera2dBundle {
-        transform: Transform {
-            translation: Vec3::new(0.0, 0.0, 100.0),
+    commands
+        .spawn(Camera2dBundle {
+            transform: Transform {
+                translation: Vec3::new(0.0, 0.0, 100.0),
+                ..default()
+            },
             ..default()
-        },
-        ..default()
-    }).insert(MainCamera);
+        })
+        .insert(MainCamera);
 
     let window = windows.single();
     let window_width = window.width();
@@ -255,16 +258,16 @@ fn setup(
     let scale_factor: f32 = 0.9;
 
     let mut all_apps: Vec<(String, Option<Client>, bool)> = Vec::new();
-    
+
     for fav in &favorites.0 {
         let client = client_list.0.iter().find(|c| {
             let name = c.name.clone().unwrap_or(c.class.clone());
             &name == fav
         });
-        
+
         all_apps.push((fav.clone(), client.cloned(), true));
     }
-    
+
     for client in &client_list.0 {
         let name = client.name.clone().unwrap_or(client.class.clone());
         if !favorites.0.contains(&name) {
@@ -275,10 +278,12 @@ fn setup(
     let apps_count = all_apps.len();
 
     for (index, (name, client_opt, is_favorite)) in all_apps.iter().enumerate() {
-        let class = client_opt.as_ref().map_or(name.clone(), |c| c.class.clone());
+        let class = client_opt
+            .as_ref()
+            .map_or(name.clone(), |c| c.class.clone());
         let icon_path = get_icon_path(&class);
         let path = Path::new(&icon_path);
-        
+
         if let Some(img) = load_icon(path) {
             let handle = images.add(img);
 
@@ -290,9 +295,12 @@ fn setup(
             let z = -(index as f32 * z_spacing);
 
             let scale = base_scale * scale_factor.powi(index as i32);
-            
-            // If it's a favorite but not running, make it transparent
-            let alpha = if *is_favorite && client_opt.is_none() { 0.2 } else { 1.0 };
+
+            let alpha = if *is_favorite && client_opt.is_none() {
+                0.2
+            } else {
+                1.0
+            };
             let color = Color::rgba(1.0, 1.0, 1.0, alpha);
 
             let icon_entity = commands
@@ -303,10 +311,7 @@ fn setup(
                         scale: Vec3::splat(scale),
                         ..default()
                     },
-                    sprite: Sprite {
-                        color,
-                        ..default()
-                    },
+                    sprite: Sprite { color, ..default() },
                     ..default()
                 })
                 .insert(ClientIcon)
@@ -319,38 +324,37 @@ fn setup(
                 })
                 .insert(Name::new(name.clone()))
                 .id();
-                
+
             if let Some(client) = client_opt {
-                commands.entity(icon_entity).insert(ClientAddress(client.address.clone()));
-            }
-            
-            if *is_favorite {
-                commands.entity(icon_entity).insert(Favorite);
-                create_favorite_pin(&mut commands, &asset_server, icon_entity, &Transform {
-                    translation: Vec3::new(x, y, z),
-                    scale: Vec3::splat(scale),
-                    ..default()
-                });
+                commands
+                    .entity(icon_entity)
+                    .insert(ClientAddress(client.address.clone()));
             }
 
+            if *is_favorite {
+                commands.entity(icon_entity).insert(Favorite);
+                create_favorite_pin(&mut commands, &asset_server, icon_entity);
+            }
             if show_titles.0 {
-                commands.spawn(Text2dBundle {
-                    text: Text::from_section(
-                        name.clone(),
-                        TextStyle {
-                            font: asset_server.load(FONT_PATH),
-                            font_size: 12.0 * scale,
-                            color: Color::WHITE,
+                commands
+                    .spawn(Text2dBundle {
+                        text: Text::from_section(
+                            name.clone(),
+                            TextStyle {
+                                font: asset_server.load(FONT_PATH),
+                                font_size: 12.0 * scale,
+                                color: Color::WHITE,
+                            },
+                        )
+                        .with_alignment(TextAlignment::Center),
+                        transform: Transform {
+                            translation: Vec3::new(x, y - 30.0 * scale, z - 0.01),
+                            scale: Vec3::splat(scale),
+                            ..default()
                         },
-                    )
-                    .with_alignment(TextAlignment::Center),
-                    transform: Transform {
-                        translation: Vec3::new(x, y - 30.0 * scale, z - 0.01),
-                        scale: Vec3::splat(scale),
                         ..default()
-                    },
-                    ..default()
-                }).insert(IconText(icon_entity));
+                    })
+                    .insert(IconText(icon_entity));
             }
         } else {
             println!("Error: ❌ Failed to load icon for {}", name);
@@ -369,7 +373,7 @@ fn hover_system(
     }
 
     let window = windows.single();
-    
+
     if let Ok((camera, camera_transform)) = q_camera.get_single() {
         if let Some(cursor_pos) = window.cursor_position() {
             if let Some(world_cursor) = camera.viewport_to_world_2d(camera_transform, cursor_pos) {
@@ -408,7 +412,11 @@ fn hover_animation_system(
         transform.translation.z = hover.original_z;
 
         let original_scale = hover.original_scale;
-        let target_scale = if hover.is_hovered { original_scale * 1.2 } else { original_scale };
+        let target_scale = if hover.is_hovered {
+            original_scale * 1.2
+        } else {
+            original_scale
+        };
         let current_scale = transform.scale.x;
         let new_scale = current_scale + (target_scale - current_scale) * time.delta_seconds() * 5.0;
         transform.scale = Vec3::splat(new_scale);
@@ -421,7 +429,9 @@ fn collect_icon_data(
 ) {
     icon_positions.0.clear();
     for (entity, transform, _hover) in query.iter() {
-        icon_positions.0.insert(entity, (transform.translation, transform.scale));
+        icon_positions
+            .0
+            .insert(entity, (transform.translation, transform.scale));
     }
 }
 
@@ -442,20 +452,23 @@ fn update_text_positions(
 fn create_favorite_pin(
     commands: &mut Commands,
     asset_server: &Res<AssetServer>,
-    entity: Entity,
-    transform: &Transform,
-) -> Entity {
-
-    commands
-        .spawn(SpriteBundle {
-            texture: asset_server.load("pin-stroke-rounded.png"),
-            ..default()
-        })
-        .insert(FavoritePin)
-        .insert(IconText(entity))
-        .id()
+    parent_entity: Entity,
+) {
+    commands.entity(parent_entity).with_children(|parent| {
+        parent
+            .spawn(Svg2dBundle {
+                svg: asset_server.load(ICON_PIN_PATH),
+                origin: Origin::Center,
+                transform: Transform {
+                    translation: Vec3::new(ICON_SIZE / 3.0, ICON_SIZE / 2.0, 0.1),
+                    scale: Vec3::splat(0.4),
+                    ..default()
+                },
+                ..Default::default()
+            })
+            .insert(FavoritePin);
+    });
 }
-
 
 fn toggle_favorite_system(
     buttons: Res<Input<MouseButton>>,
@@ -474,10 +487,10 @@ fn toggle_favorite_system(
                         let pos = transform.translation.truncate();
                         let size = Vec2::splat(ICON_SIZE);
                         let rect = Rect::from_center_size(pos, size);
-                        
+
                         if rect.contains(world_pos) {
                             let app_name = name.as_str().to_string();
-                            
+
                             if favorites.0.contains(&app_name) {
                                 favorites.0.retain(|n| n != &app_name);
                                 println!("Removed from favorites: {}", app_name);
@@ -485,7 +498,7 @@ fn toggle_favorite_system(
                                 favorites.0.push(app_name.clone());
                                 println!("Added to favorites: {}", app_name);
                             }
-                            
+
                             save_favorites(&favorites);
                             ui_state.needs_restart = true;
                             break;
@@ -579,19 +592,20 @@ fn drag_check_system(
 ) {
     if mouse_button.pressed(MouseButton::Left) {
         let window = windows.single();
-        if let (Some(click_origin), Some(cursor_pos)) = (ui_state.click_origin, window.cursor_position()) {
-           
+        if let (Some(click_origin), Some(cursor_pos)) =
+            (ui_state.click_origin, window.cursor_position())
+        {
             let threshold = 10.0;
             if click_origin.distance(cursor_pos) > threshold && ui_state.dragging.is_none() {
-
                 if let Ok((camera, camera_transform)) = q_camera.get_single() {
-                    if let Some(world_cursor) = camera.viewport_to_world_2d(camera_transform, cursor_pos) {
-
+                    if let Some(world_cursor) =
+                        camera.viewport_to_world_2d(camera_transform, cursor_pos)
+                    {
                         for (entity, hover) in q_icons.iter() {
                             let pos = hover.original_position;
                             let size = Vec2::splat(ICON_SIZE * hover.original_scale);
                             let rect = Rect::from_center_size(pos, size);
-                            
+
                             // calculate the offset between the icon and the click position
                             if rect.contains(world_cursor) {
                                 let offset = pos - world_cursor;
@@ -621,7 +635,9 @@ fn drag_update_system(
             let window = windows.single();
             if let Some(cursor_pos) = window.cursor_position() {
                 if let Ok((camera, camera_transform)) = q_camera.get_single() {
-                    if let Some(world_cursor) = camera.viewport_to_world_2d(camera_transform, cursor_pos) {
+                    if let Some(world_cursor) =
+                        camera.viewport_to_world_2d(camera_transform, cursor_pos)
+                    {
                         transform.translation.x = world_cursor.x + dragging.offset.x;
                         transform.translation.y = world_cursor.y + dragging.offset.y;
                         transform.translation.z = hover.original_z;
@@ -642,15 +658,16 @@ fn drag_end_system(
     if mouse_button.just_released(MouseButton::Left) && ui_state.dragging.is_some() {
         if let Some(dragged_entity) = ui_state.dragging {
             commands.entity(dragged_entity).remove::<Dragging>();
-            
-            // order clients by horizontal flow
+
             let mut positions: Vec<(usize, f32, String)> = q_icons
                 .iter()
-                .map(|(transform, hover, address)| (hover.index, transform.translation.x, address.0.clone()))
+                .map(|(transform, hover, address)| {
+                    (hover.index, transform.translation.x, address.0.clone())
+                })
                 .collect();
-                
+
             positions.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
-            
+
             let mut new_list = Vec::new();
             for (_, _, address) in positions.iter() {
                 for client in &client_list.0 {
@@ -660,9 +677,9 @@ fn drag_end_system(
                     }
                 }
             }
-            
+
             client_list.0 = new_list;
-            
+
             ui_state.dragging = None;
             ui_state.click_origin = None;
             ui_state.needs_restart = true;
@@ -693,7 +710,7 @@ fn check_restart(
     cameras: Query<Entity, With<MainCamera>>,
     client_list: Res<ClientList>,
     asset_server: Res<AssetServer>,
-    mut images: ResMut<Assets<Image>>,
+    images: ResMut<Assets<Image>>,
     windows: Query<&Window, With<PrimaryWindow>>,
     show_titles: Res<ShowTitles>,
     favorites: Res<Favorites>,
@@ -702,13 +719,21 @@ fn check_restart(
         for entity in cameras.iter() {
             commands.entity(entity).despawn_recursive();
         }
-        
+
         for entity in &query {
             commands.entity(entity).despawn();
         }
-        
+
         ui_state.needs_restart = false;
-        
-        setup(commands, asset_server, images, client_list, windows, show_titles, favorites);
+
+        setup(
+            commands,
+            asset_server,
+            images,
+            client_list,
+            windows,
+            show_titles,
+            favorites,
+        );
     }
 }
