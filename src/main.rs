@@ -73,8 +73,8 @@ struct IconPositions(HashMap<Entity, (Vec3, Vec3)>);
 struct MainCamera;
 
 static FONT_PATH: &str = "/usr/share/fonts/VictorMono/VictorMonoNerdFont-Medium.ttf";
-static FALLBACK_ICON_PATH: &str = "assets/dockIcon.svg";
-static ICON_PIN_PATH: &str = "pin-stroke-rounded.svg";
+static FALLBACK_ICON_PATH: &str = "assets/dock_icon.svg";
+static ICON_PIN_PATH: &str = "pin_stroke_rounded.svg";
 const ICON_SIZE: f32 = 56.0;
 
 fn main() {
@@ -157,8 +157,14 @@ fn save_favorites(favorites: &Favorites) {
 fn get_icon_path(class: &str) -> String {
     let lowercase = class.to_lowercase();
     match icon_finder::find_icon(lowercase, 56, 1) {
-        Some(path) => path.to_string_lossy().to_string(),
-        None => {
+        Some(path) => {
+            println!(
+                "Ok: 🆗 icon found for {},",
+                path.to_string_lossy().to_string()
+            );
+            path.to_string_lossy().to_string()
+        }
+        _ => {
             println!("Warning: ⚠️ No icons found for {}, using fallback", class);
             FALLBACK_ICON_PATH.to_string()
         }
