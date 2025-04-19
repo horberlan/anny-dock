@@ -2,7 +2,9 @@ use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy::render::texture::{Image, ImageSampler};
 use bevy::window::{PrimaryWindow, Window, WindowPlugin};
-use bevy_svg::prelude::*;
+use bevy_easings::{Ease, EaseFunction, EasingType};
+use bevy_svg::prelude::{Origin, Svg2dBundle};
+use bevy_svg::SvgPlugin;
 
 use image::io::Reader as ImageReader;
 use resvg::{tiny_skia, usvg};
@@ -15,7 +17,7 @@ use xdgkit::icon_finder;
 #[derive(Deserialize, Debug, Clone)]
 struct Client {
     class: String,
-    title: String,
+    // title: String,
     address: String,
     #[serde(default)]
     name: Option<String>,
@@ -91,7 +93,7 @@ fn main() {
                     ..default()
                 })
                 .set(ImagePlugin {
-                    default_sampler: ImageSampler::nearest_descriptor(),
+                    default_sampler: ImageSampler::linear_descriptor(),
                     ..default()
                 }),
         )
@@ -153,48 +155,47 @@ fn save_favorites(favorites: &Favorites) {
         let _ = std::fs::write("favorites.json", json);
     }
 }
-
 fn get_icon_path(class: &str) -> String {
     let lowercase = class.to_lowercase();
     match icon_finder::find_icon(lowercase, 56, 1) {
         Some(path) => {
-            println!(
-                "Ok: 🆗 icon found for {},",
-                path.to_string_lossy().to_string()
-            );
+            info!("icon found for {},", path.to_string_lossy().to_string());
             path.to_string_lossy().to_string()
         }
         _ => {
-            println!("Warning: ⚠️ No icons found for {}, using fallback", class);
+            warn!("Warning: ⚠️ No icons found for {}, using fallback", class);
             FALLBACK_ICON_PATH.to_string()
         }
     }
 }
 
 fn load_icon(path: &Path) -> Option<Image> {
-    if path.extension().map_or(false, |ext| ext == "svg") {
-        return load_svg_image(path);
-    } else {
-        if let Ok(reader) = ImageReader::open(path) {
-            if let Ok(img) = reader.decode() {
-                let rgba_img = img.to_rgba8();
-                let (width, height) = rgba_img.dimensions();
-                let data = rgba_img.into_raw();
-
-                let image = Image::new_fill(
-                    Extent3d {
-                        width,
-                        height,
-                        depth_or_array_layers: 1,
-                    },
-                    TextureDimension::D2,
-                    &data,
-                    TextureFormat::Rgba8UnormSrgb,
-                );
-                return Some(image);
-            }
+    if let Some(ext) = path.extension() {
+        if ext == "svg" {
+            return load_svg_image(path);
         }
     }
+
+    if let Ok(reader) = ImageReader::open(path) {
+        if let Ok(img) = reader.decode() {
+            let rgba_img = img.to_rgba8();
+            let (width, height) = rgba_img.dimensions();
+            let data = rgba_img.into_raw();
+
+            let image = Image::new_fill(
+                Extent3d {
+                    width,
+                    height,
+                    depth_or_array_layers: 1,
+                },
+                TextureDimension::D2,
+                &data,
+                TextureFormat::Rgba8UnormSrgb,
+            );
+            return Some(image);
+        }
+    }
+
     None
 }
 
@@ -267,8 +268,8 @@ fn setup(
 
     for fav in &favorites.0 {
         let client = client_list.0.iter().find(|c| {
-            let name = c.name.clone().unwrap_or(c.class.clone());
-            &name == fav
+            let name = c.name.as_ref().unwrap_or(&c.class);
+            name == fav
         });
 
         all_apps.push((fav.clone(), client.cloned(), true));
@@ -363,7 +364,7 @@ fn setup(
                     .insert(IconText(icon_entity));
             }
         } else {
-            println!("Error: ❌ Failed to load icon for {}", name);
+            error!("Failed to load icon for {}", name);
         }
     }
 }
@@ -461,21 +462,36 @@ fn create_favorite_pin(
     parent_entity: Entity,
 ) {
     commands.entity(parent_entity).with_children(|parent| {
+        let initial_transform = Transform {
+            translation: Vec3::new(ICON_SIZE / 3.0, ICON_SIZE / 2.0, 0.1),
+            scale: Vec3::splat(0.4),
+            ..default()
+        };
+
+        let target_transform = Transform {
+            translation: Vec3::new(ICON_SIZE / 3.0, ICON_SIZE / 2.0, 0.1),
+            scale: Vec3::splat(1.0),
+            ..default()
+        };
+
         parent
             .spawn(Svg2dBundle {
                 svg: asset_server.load(ICON_PIN_PATH),
                 origin: Origin::Center,
-                transform: Transform {
-                    translation: Vec3::new(ICON_SIZE / 3.0, ICON_SIZE / 2.0, 0.1),
-                    scale: Vec3::splat(0.4),
-                    ..default()
-                },
+                transform: initial_transform,
                 ..Default::default()
             })
-            .insert(FavoritePin);
+            .insert(FavoritePin)
+            .insert(initial_transform.ease_to(
+                target_transform,
+                EaseFunction::ElasticOut,
+                EasingType::PingPong {
+                    duration: std::time::Duration::from_millis(400),
+                    pause: Some(std::time::Duration::from_millis(400)),
+                },
+            ));
     });
 }
-
 fn toggle_favorite_system(
     buttons: Res<Input<MouseButton>>,
     windows: Query<&Window, With<PrimaryWindow>>,
@@ -499,10 +515,10 @@ fn toggle_favorite_system(
 
                             if favorites.0.contains(&app_name) {
                                 favorites.0.retain(|n| n != &app_name);
-                                println!("Removed from favorites: {}", app_name);
+                                info!("Removed from favorites: {}", app_name);
                             } else {
                                 favorites.0.push(app_name.clone());
-                                println!("Added to favorites: {}", app_name);
+                                info!("Added to favorites: {}", app_name);
                             }
 
                             save_favorites(&favorites);
@@ -523,7 +539,6 @@ fn icon_click_system(
     q_icons: Query<(&Transform, &ClientAddress), With<ClientIcon>>,
     ui_state: Res<UiState>,
 ) {
-    // if not dragging, work w/ click
     if buttons.just_released(MouseButton::Left) && ui_state.dragging.is_none() {
         let window = windows.single();
         if let Some(cursor_pos) = window.cursor_position() {
@@ -552,9 +567,9 @@ fn focus_client(address: &str) {
         .expect("failed to execute hyprctl");
 
     if output.status.success() {
-        println!("✅ Focused window: {}", full_address);
+        info!("✅ Focused window: {}", full_address);
     } else {
-        eprintln!(
+        error!(
             "❌ Failed to focus window: {}. Error: {}",
             full_address,
             String::from_utf8_lossy(&output.stderr)
@@ -570,7 +585,7 @@ fn toggle_titles(
     if keyboard_input.just_pressed(KeyCode::T) {
         show_titles.0 = !show_titles.0;
         ui_state.needs_restart = true;
-        println!("Title visibility toggled: {}", show_titles.0);
+        info!("Title visibility toggled: {}", show_titles.0);
     }
 }
 
@@ -612,7 +627,6 @@ fn drag_check_system(
                             let size = Vec2::splat(ICON_SIZE * hover.original_scale);
                             let rect = Rect::from_center_size(pos, size);
 
-                            // calculate the offset between the icon and the click position
                             if rect.contains(world_cursor) {
                                 let offset = pos - world_cursor;
                                 commands.entity(entity).insert(Dragging { offset });
@@ -625,7 +639,6 @@ fn drag_check_system(
             }
         }
     } else if mouse_button.just_released(MouseButton::Left) {
-        // ---if the button is released without having exceeded the threshold, reset the origin
         ui_state.click_origin = None;
     }
 }
