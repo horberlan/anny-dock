@@ -40,7 +40,7 @@ pub(crate) fn get_icon_path(class: &str) -> String {
             path.to_string_lossy().to_string()
         }
         _ => {
-            warn!("Warning: ⚠️ No icons found for {}, using fallback", class);
+            warn!("No icons found for {}, using fallback", class);
             FALLBACK_ICON_PATH.to_string()
         }
     }
