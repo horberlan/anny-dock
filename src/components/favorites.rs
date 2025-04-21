@@ -14,7 +14,9 @@ use bevy::{
 use bevy_easings::{Ease, EaseFunction, EasingType};
 use bevy_svg::prelude::{Origin, Svg2dBundle};
 
-use crate::{ClientAddress, Favorite, FavoritePin, IconText, FONT_PATH, ICON_PIN_PATH, ICON_SIZE};
+use crate::{
+    ClientAddress, Favorite, FavoritePin, IconText, ASSETS_ICON_PIN_PATH, FONT_PATH, ICON_SIZE,
+};
 
 pub(crate) fn add_client_address(commands: &mut Commands, entity: Entity, address: String) {
     commands.entity(entity).insert(ClientAddress(address));
@@ -80,7 +82,7 @@ pub(crate) fn set_favorite_pin(
 
         parent
             .spawn(Svg2dBundle {
-                svg: asset_server.load(ICON_PIN_PATH),
+                svg: asset_server.load(ASSETS_ICON_PIN_PATH),
                 origin: Origin::Center,
                 transform: initial_transform,
                 ..Default::default()

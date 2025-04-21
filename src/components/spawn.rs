@@ -45,6 +45,7 @@ pub(crate) fn spawn_icon_entity(
                 original_scale: scale,
                 index,
                 is_hovered: false,
+                hover_exit_timer: None, // Added to fix the error
             })
             .insert(Name::new(class.to_string()))
             .id()
