@@ -16,3 +16,18 @@ resvg = "0.28.0"
 usvg = "0.28.0"
 tiny-skia = "0.8.0"
 dirs = "5.0"
+
+[features]
+# dev = ["bevy/dynamic_linking", "bevy/bevy_dev_tools"]
+# dev_native = ["dev", "bevy/file_watcher", "bevy/embedded_watcher"]
+
+[profile.dev.package.wgpu-types]
+debug-assertions = false
+
+[profile.release]
+opt-level = "s"
+
+[profile.release-native]
+inherits = "release"
+opt-level = 3
+strip = "none"
