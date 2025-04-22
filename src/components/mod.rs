@@ -1,5 +1,5 @@
-pub mod favorites;
-pub mod spawn;
+mod favorites;
+mod spawn;
 
-pub use favorites::*;
-pub use spawn::*;
+pub(crate) use favorites::*;
+pub(crate) use spawn::*;
