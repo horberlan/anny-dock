@@ -1,3 +1,4 @@
+use bevy::prelude::{Component, Resource};
 use bevy::{
     asset::AssetServer,
     ecs::{
@@ -11,12 +12,21 @@ use bevy::{
     transform::components::Transform,
     utils::default,
 };
+
 use bevy_easings::{Ease, EaseFunction, EasingType};
 use bevy_svg::prelude::{Origin, Svg2dBundle};
+use serde::{Deserialize, Serialize};
 
-use crate::{
-    ClientAddress, Favorite, FavoritePin, IconText, ASSETS_ICON_PIN_PATH, FONT_PATH, ICON_SIZE,
-};
+#[derive(Component)]
+struct FavoritePin;
+
+#[derive(Resource, Deserialize, Serialize, Clone, Default)]
+pub struct Favorites(pub Vec<String>);
+
+#[derive(Component)]
+pub struct Favorite;
+
+use crate::{ClientAddress, IconText, ASSETS_ICON_PIN_PATH, FONT_PATH, ICON_SIZE};
 
 pub(crate) fn add_client_address(commands: &mut Commands, entity: Entity, address: String) {
     commands.entity(entity).insert(ClientAddress(address));
