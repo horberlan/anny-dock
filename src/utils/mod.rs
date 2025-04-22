@@ -1,11 +1,12 @@
 pub use loader::*;
+pub mod hover;
 pub mod loader;
 use bevy::log::{error, info};
 use bevy::math::{Vec2, Vec3};
 use std::fs;
 use std::process::Command;
 
-pub(crate) fn launch_application(class: &str) {
+pub fn launch_application(class: &str) {
     if let Some(exec) = find_exec_for_class(class) {
         let exec = exec.split_whitespace().next().unwrap_or(&exec);
         match Command::new(exec).spawn() {
@@ -102,7 +103,7 @@ fn parse_desktop_file(content: &str, class: &str) -> Option<String> {
     }
 }
 
-pub(crate) struct DockConfig {
+pub struct DockConfig {
     pub margin_x: f32,
     pub margin_y: f32,
     pub spacing: f32,
@@ -124,7 +125,7 @@ impl Default for DockConfig {
     }
 }
 
-pub(crate) fn calculate_icon_transform(
+pub fn calculate_icon_transform(
     index: usize,
     start_pos: Vec2,
     direction: Vec2,
