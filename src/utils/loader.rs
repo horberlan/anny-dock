@@ -11,7 +11,7 @@ use xdgkit::icon_finder;
 
 use crate::{Client, Favorites, FALLBACK_ICON_PATH};
 
-pub(crate) fn load_clients() -> Vec<Client> {
+pub fn load_clients() -> Vec<Client> {
     let output = Command::new("hyprctl")
         .args(["clients", "-j"])
         .output()
@@ -20,19 +20,19 @@ pub(crate) fn load_clients() -> Vec<Client> {
     serde_json::from_slice(&output.stdout).unwrap_or_default()
 }
 
-pub(crate) fn load_favorites() -> Favorites {
+pub fn load_favorites() -> Favorites {
     match std::fs::read_to_string("favorites.json") {
         Ok(data) => serde_json::from_str(&data).unwrap_or_default(),
         Err(_) => Favorites::default(),
     }
 }
 
-pub(crate) fn save_favorites(favorites: &Favorites) {
+pub fn save_favorites(favorites: &Favorites) {
     if let Ok(json) = serde_json::to_string(favorites) {
         let _ = std::fs::write("favorites.json", json);
     }
 }
-pub(crate) fn get_icon_path(class: &str) -> String {
+pub fn get_icon_path(class: &str) -> String {
     let lowercase = class.to_lowercase();
     match icon_finder::find_icon(lowercase, 56, 1) {
         Some(path) => {
@@ -46,7 +46,7 @@ pub(crate) fn get_icon_path(class: &str) -> String {
     }
 }
 
-pub(crate) fn load_icon(path: &Path) -> Option<Image> {
+pub fn load_icon(path: &Path) -> Option<Image> {
     if let Some(ext) = path.extension() {
         if ext == "svg" {
             return load_svg_image(path);
@@ -76,7 +76,7 @@ pub(crate) fn load_icon(path: &Path) -> Option<Image> {
     None
 }
 
-pub(crate) fn load_svg_image(path: &Path) -> Option<Image> {
+pub fn load_svg_image(path: &Path) -> Option<Image> {
     let svg_data = std::fs::read(path).ok()?;
     let opt = usvg::Options::default();
     let tree = usvg::Tree::from_data(&svg_data, &opt).ok()?;
