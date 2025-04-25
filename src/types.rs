@@ -74,3 +74,6 @@ pub struct ReorderIcons;
 pub struct DockOrder(pub Vec<String>);
 
 pub const ICON_SIZE: f32 = 56.0;
+
+#[derive(Event)]
+pub struct IconRemovedEvent(pub String);
