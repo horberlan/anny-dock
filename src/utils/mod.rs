@@ -1,22 +1,54 @@
 pub use loader::*;
 pub mod hover;
 pub mod loader;
-use bevy::log::{error, info};
+use bevy::log::{error, info, warn};
 use bevy::math::{Vec2, Vec3};
 use std::fs;
 use std::process::Command;
 
 pub fn launch_application(class: &str) {
-    if let Some(exec) = find_exec_for_class(class) {
-        let exec = exec.split_whitespace().next().unwrap_or(&exec);
-        match Command::new(exec).spawn() {
-            Ok(_) => info!("launching: {}", exec),
-            Err(e) => error!("{}: {}", exec, e),
+    match find_exec_for_class(class) {
+        Some(exec) => {
+            info!("Found executable: {}", exec);
+            let clean_exec = exec.split_whitespace()
+                .take_while(|&part| !part.starts_with('%'))
+                .collect::<Vec<_>>()
+                .join(" ");
+                
+            info!("Launching with cleaned exec: {}", clean_exec);
+            
+            let direct_output = Command::new("sh")
+                .arg("-c")
+                .arg(&clean_exec)
+                .spawn();
+
+            match direct_output {
+                Ok(_) => {
+                    info!("Successfully launched application: {}", class);
+                }
+                Err(e) => {
+                    error!("Failed to launch directly, trying fallback: {:?}", e);
+                    let fallback = Command::new("hyprctl")
+                        .args(["dispatch", "exec", class])
+                        .spawn();
+                        
+                    match fallback {
+                        Ok(_) => info!("Successfully launched via hyprctl: {}", class),
+                        Err(e) => error!("All launch attempts failed: {:?}", e),
+                    }
+                }
+            }
         }
-    } else {
-        match Command::new(class).spawn() {
-            Ok(_) => info!("(fallback): {}", class),
-            Err(e) => error!("{} (fallback): {}", class, e),
+        None => {
+            warn!("No executable found for class: {}, trying direct launch", class);
+            let output = Command::new("hyprctl")
+                .args(["dispatch", "exec", class])
+                .spawn();
+
+            match output {
+                Ok(_) => info!("Successfully launched via hyprctl: {}", class),
+                Err(e) => error!("Failed to launch application: {:?}", e),
+            }
         }
     }
 }
@@ -61,19 +93,31 @@ fn find_exec_for_class(class: &str) -> Option<String> {
 
 fn parse_exec_only(content: &str) -> Option<String> {
     let mut in_desktop_entry = false;
+    let mut exec = None;
+    let mut no_display = false;
+    let mut terminal = false;
+
     for line in content.lines() {
         let line = line.trim();
         if line.starts_with('[') {
             in_desktop_entry = line == "[Desktop Entry]";
         } else if in_desktop_entry {
             if let Some((key, value)) = line.split_once('=') {
-                if key.trim() == "Exec" {
-                    return Some(value.trim().to_string());
+                match key.trim() {
+                    "Exec" => exec = Some(value.trim().to_string()),
+                    "NoDisplay" => no_display = value.trim().to_lowercase() == "true",
+                    "Terminal" => terminal = value.trim().to_lowercase() == "true",
+                    _ => {}
                 }
             }
         }
     }
-    None
+
+    if no_display || terminal {
+        return None;
+    }
+
+    exec
 }
 
 fn parse_desktop_file(content: &str, class: &str) -> Option<String> {
@@ -139,3 +183,4 @@ pub fn calculate_icon_transform(
     let scale = config.base_scale * config.scale_factor.powi(index as i32);
     (Vec3::new(x, y, z), scale)
 }
+

@@ -9,7 +9,8 @@ use std::path::Path;
 use std::process::Command;
 use xdgkit::icon_finder;
 
-use crate::{Client, Favorites, FALLBACK_ICON_PATH};
+use crate::components::Favorites;
+use crate::{Client, FALLBACK_ICON_PATH};
 
 pub fn load_clients() -> Vec<Client> {
     let output = Command::new("hyprctl")
