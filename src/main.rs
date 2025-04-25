@@ -14,10 +14,12 @@ use components::{
 use std::process::Command;
 use types::*;
 use utils::hover::{hover_animation_system, hover_system};
-use utils::{calculate_icon_transform, load_clients, load_favorites, save_favorites, DockConfig};
+use utils::{
+    calculate_icon_transform, launch_application, load_clients, load_favorites, save_favorites,
+    DockConfig,
+};
 
 use crate::systems::*;
-use crate::utils::launch_application;
 
 static FONT_PATH: &str = "/usr/share/fonts/VictorMono/VictorMonoNerdFont-Medium.ttf";
 static FALLBACK_ICON_PATH: &str = "assets/dock_icon.svg";
@@ -53,6 +55,7 @@ fn main() {
         .insert_resource(favorites)
         .insert_resource(ReorderTrigger::default())
         .insert_resource(DockOrder::default())
+        .add_event::<IconRemovedEvent>()
         .add_systems(Startup, setup)
         .add_systems(Update, cleanup_duplicate_cameras)
         .add_systems(Update, hover_system)
@@ -214,10 +217,13 @@ fn toggle_favorite_system(
         &ClientAddress,
         Option<&Favorite>,
         &mut Sprite,
+        Option<&ClientAddress>,
     )>,
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut favorites: ResMut<Favorites>,
+    client_list: Res<ClientList>,
+    mut icon_removed_writer: EventWriter<IconRemovedEvent>,
 ) {
     if buttons.just_released(MouseButton::Right) {
         let window = windows.single();
@@ -231,6 +237,7 @@ fn toggle_favorite_system(
                         _client_address,
                         favorite_opt,
                         mut sprite,
+                        client_address_opt,
                     ) in &mut q_icons
                     {
                         let pos = transform.translation.truncate();
@@ -245,6 +252,9 @@ fn toggle_favorite_system(
                                 &client_class.0,
                                 favorite_opt.is_some(),
                                 &mut sprite,
+                                client_address_opt,
+                                client_list,
+                                &mut icon_removed_writer,
                             );
                             break;
                         }
@@ -263,19 +273,53 @@ fn toggle_favorite(
     app_class: &str,
     is_favorite: bool,
     sprite: &mut Sprite,
+    q_address: Option<&ClientAddress>,
+    client_list: Res<ClientList>,
+    icon_removed_writer: &mut EventWriter<IconRemovedEvent>,
 ) {
     if is_favorite {
+        info!("Removing favorite: {}", app_class);
         favorites.0.retain(|c| c != app_class);
         commands.entity(entity).remove::<Favorite>();
         commands.entity(entity).despawn_descendants();
+
+        let address = q_address.map(|a| a.0.clone()).unwrap_or_else(|| format!("pinned:{}", app_class));
+        if address.starts_with("pinned:") {
+            commands.entity(entity).despawn();
+            icon_removed_writer.send(IconRemovedEvent(address.clone()));
+            
+            let mut new_order: Vec<String> = client_list
+                .0
+                .iter()
+                .map(|c| c.address.clone())
+                .collect();
+
+            for fav in &favorites.0 {
+                if let None = client_list.0.iter().find(|c| &c.class == fav) {
+                    new_order.push(format!("pinned:{}", fav));
+                }
+            }
+
+            commands.insert_resource(DockOrder(new_order));
+            commands.insert_resource(ReorderTrigger(true));
+        }
     } else {
+        info!("Adding favorite: {}", app_class);
         if !favorites.0.contains(&app_class.to_string()) {
             favorites.0.push(app_class.to_string());
         }
         commands.entity(entity).insert(Favorite);
-        add_favorite(commands, entity, asset_server);
+        crate::components::add_favorite(commands, entity, asset_server);
     }
-    update_sprite_alpha(sprite, !is_favorite, true);
+
+    if commands.get_entity(entity).is_some() {
+        update_sprite_alpha(
+            sprite,
+            !is_favorite,
+            q_address.is_some() && q_address.map(|a| !a.0.starts_with("pinned:")).unwrap_or(false),
+        );
+    }
+
     save_favorites(favorites);
 }
 
@@ -302,8 +346,14 @@ fn icon_click_system(
                         let rect = Rect::from_center_size(pos, size);
                         if rect.contains(world_pos) {
                             if let Some(address) = address_opt {
-                                focus_client(&address.0);
+                                if address.0.starts_with("pinned:") {
+                                    info!("launch_application, {}", client_class.0);
+                                    launch_application(&client_class.0);
+                                } else {
+                                    focus_client(&address.0);
+                                }
                             } else if favorite_opt.is_some() {
+                                info!("launch_application, {}", client_class.0);
                                 launch_application(&client_class.0);
                             }
                             break;
@@ -317,7 +367,19 @@ fn icon_click_system(
 
 fn focus_client(address: &str) {
     let full_address = format!("address:{}", address.trim_start_matches("address:"));
-    let _ = Command::new("hyprctl")
+    info!("Executing hyprctl dispatch focuswindow {}", full_address);
+    let output = Command::new("hyprctl")
         .args(["dispatch", "focuswindow", &full_address])
         .output();
+    match output {
+        Ok(result) => {
+            if !result.status.success() {
+                warn!(
+                    "Failed to focus window: {:?}",
+                    String::from_utf8_lossy(&result.stderr)
+                );
+            }
+        }
+        Err(e) => error!("Error executing hyprctl: {:?}", e),
+    }
 }
