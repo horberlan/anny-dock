@@ -4,7 +4,9 @@ version = "0.0.1"
 edition = "2021"
 
 [dependencies]
-bevy = "0.10"
+bevy = "0.11"
+bevy_svg = { version = "0.11", default-features = false, features = ["2d"] }
+bevy_easings = "0.11"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 image = "0.24"
@@ -13,3 +15,19 @@ xdgkit = "3.2.5"
 resvg = "0.28.0"
 usvg = "0.28.0"
 tiny-skia = "0.8.0"
+dirs = "5.0"
+
+[features]
+# dev = ["bevy/dynamic_linking", "bevy/bevy_dev_tools"]
+# dev_native = ["dev", "bevy/file_watcher", "bevy/embedded_watcher"]
+
+[profile.dev.package.wgpu-types]
+debug-assertions = false
+
+[profile.release]
+opt-level = "s"
+
+[profile.release-native]
+inherits = "release"
+opt-level = 3
+strip = "none"
