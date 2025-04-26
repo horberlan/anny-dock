@@ -5,7 +5,7 @@
 
 [![Rust](https://img.shields.io/badge/rust-%23000000.svg?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![Bevy](https://img.shields.io/badge/bevy-%23232323.svg?style=for-the-badge&logo=bevy&logoColor=white)](https://bevyengine.org/)
-[![Hyprland](https://img.shields.io/badge/hyprland-%23FF69B4.svg?style=for-the-badge&logo=linux&logoColor=white)](https://hyprland.org/)
+[![Hyprland](https://img.shields.io/badge/Hyprland-222222?style=for-the-badge&logo=Hyprland&logoColor=58E1FF)](https://hyprland.org/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=for-the-badge)](LICENSE)
 [![Maintenance](https://img.shields.io/badge/Maintained%3F-yes-green.svg?style=for-the-badge)](https://github.com/username/anny-dock/graphs/commit-activity)
 
