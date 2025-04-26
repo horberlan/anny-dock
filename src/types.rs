@@ -77,3 +77,20 @@ pub const ICON_SIZE: f32 = 56.0;
 
 #[derive(Event)]
 pub struct IconRemovedEvent(pub String);
+
+#[derive(Resource)]
+pub struct ScrollState {
+    pub offset: Vec2,
+    pub total_scroll_distance: f32,
+    pub max_visible_items: usize,
+}
+
+impl Default for ScrollState {
+    fn default() -> Self {
+        Self {
+            offset: Vec2::ZERO,
+            total_scroll_distance: 0.0,
+            max_visible_items: 8,
+        }
+    }
+}
