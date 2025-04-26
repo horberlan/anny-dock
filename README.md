@@ -1,7 +1,7 @@
 <div align="center">
-<img src="assets/dock_icon.svg" alt="Anny-Dock Logo" width="120" height="120"/>
+<img src="assets/dock_icon.svg" alt="anny-dock Logo" width="120" height="120"/>
 
-# Anny-Dock
+# anny-dock
 
 [![Rust](https://img.shields.io/badge/rust-%23000000.svg?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![Bevy](https://img.shields.io/badge/bevy-%23232323.svg?style=for-the-badge&logo=bevy&logoColor=white)](https://bevyengine.org/)
@@ -13,7 +13,7 @@ A modern, animated dock for Hyprland built with Rust and Bevy Engine.
 Currently exclusive to Hyprland, with plans to support other window managers in the future.
 
 > **Note**: This is my first Rust project! While I'm committed to writing clean and efficient code, 
-> I'm also learning along the way. Feedback and suggestions are greatly appreciated as i explore 
+> I'm also learning along the way. Feedback and suggestions are greatly appreciated as I explore 
 > Rust's capabilities and best practices.
 
 [Features](#features) •
@@ -60,13 +60,12 @@ Currently exclusive to Hyprland, with plans to support other window managers in 
 
 - Hyprland
 - Rust 1.75+
-- Linux
 
 ## Installation
 
 ```bash
 # Clone the repository
-git clone https://github.com/username/anny-dock.git
+git clone https://github.com/horberlan/anny-dock.git
 
 # Enter the directory
 cd anny-dock
@@ -74,7 +73,7 @@ cd anny-dock
 # Build the project
 cargo build --release
 
-# Run Anny-Dock
+# Run anny-dock
 cargo run --release
 ```
 
@@ -89,7 +88,7 @@ cargo run --release
 
 ### Configuration
 
-Anny-Dock can be configured through the `DockConfig` resource:
+anny-dock can be configured through the `DockConfig` resource:
 
 ```rust
 pub struct DockConfig {
@@ -106,7 +105,7 @@ pub struct DockConfig {
 
 ## Architecture
 
-Anny-Dock is built using a modern ECS architecture with Bevy:
+anny-dock is built using a modern ECS architecture with Bevy:
 
 ### Core Systems
 - Animation System
@@ -143,7 +142,6 @@ Anny-Dock is built using a modern ECS architecture with Bevy:
 - Rust 1.75+
 - Bevy dependencies
 - Hyprland
-- Linux
 
 ### Building from Source
 ```bash
@@ -180,7 +178,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Acknowledgments
 
-- [Bevy Engine](https://bevyengine.org/) for the game engine
+- [Bevy Engine](https://bevyengine.org/) for the UI
 - [Hyprland](https://hyprland.org/) for the window manager integration
 - [bevy_svg](https://github.com/Weasy666/bevy_svg) for SVG rendering
 - [xdg-utils](https://www.freedesktop.org/wiki/Software/xdg-utils/) for desktop integration
