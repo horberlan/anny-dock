@@ -1,0 +1,34 @@
+name: Changelog
+
+on:
+  workflow_dispatch:
+    inputs:
+      from_tag:
+        description: 'Tag to generate changelog from'
+        required: true
+      to_tag:
+        description: 'Tag to generate changelog to'
+        required: true
+
+jobs:
+  changelog:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Beast Changelog
+        uses: jimschubert/beast-changelog-action@v1
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN_RUST }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          CONFIG_LOCATION: .github/changelog.json
+          OUTPUT: .github/CHANGELOG.md
+          FROM: ${{ github.event.inputs.from_tag }}
+          TO: ${{ github.event.inputs.to_tag }}
+
+      - name: Print Changelog Output
+        run: cat .github/CHANGELOG.md
