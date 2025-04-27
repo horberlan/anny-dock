@@ -238,6 +238,7 @@ fn toggle_favorite_system(
     mut favorites: ResMut<Favorites>,
     client_list: Res<ClientList>,
     mut icon_removed_writer: EventWriter<IconRemovedEvent>,
+    dock_order: Res<DockOrder>,
 ) {
     if buttons.just_released(MouseButton::Right) {
         let window = windows.single();
@@ -269,6 +270,7 @@ fn toggle_favorite_system(
                                 client_address_opt,
                                 client_list,
                                 &mut icon_removed_writer,
+                                &dock_order,
                             );
                             break;
                         }
@@ -290,6 +292,7 @@ fn toggle_favorite(
     q_address: Option<&ClientAddress>,
     client_list: Res<ClientList>,
     icon_removed_writer: &mut EventWriter<IconRemovedEvent>,
+    dock_order: &Res<DockOrder>,
 ) {
     if is_favorite {
         info!("Removing favorite: {}", app_class);
@@ -302,17 +305,11 @@ fn toggle_favorite(
             commands.entity(entity).despawn();
             icon_removed_writer.send(IconRemovedEvent(address.clone()));
             
-            let mut new_order: Vec<String> = client_list
-                .0
+            let new_order: Vec<String> = dock_order.0
                 .iter()
-                .map(|c| c.address.clone())
+                .filter(|addr| addr != &&address)
+                .cloned()
                 .collect();
-
-            for fav in &favorites.0 {
-                if let None = client_list.0.iter().find(|c| &c.class == fav) {
-                    new_order.push(format!("pinned:{}", fav));
-                }
-            }
 
             commands.insert_resource(DockOrder(new_order));
             commands.insert_resource(ReorderTrigger(true));
