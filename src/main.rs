@@ -19,12 +19,36 @@ use utils::{
     DockConfig,
 };
 use utils::IconAnimationState;
+use serde_json::Value;
+use std::collections::HashSet;
+use std::process::{Stdio};
+use std::io::{BufRead, BufReader};
+use std::sync::{Arc, Mutex, mpsc::{channel, Sender, Receiver}};
+use std::env;
+use std::os::unix::net::UnixStream;
 
 use crate::systems::*;
 
 static FONT_PATH: &str = "/usr/share/fonts/VictorMono/VictorMonoNerdFont-Medium.ttf";
 static FALLBACK_ICON_PATH: &str = "assets/dock_icon.svg";
 static ASSETS_ICON_PIN_PATH: &str = "pin_stroke_rounded.svg";
+
+#[derive(Resource, Clone)]
+struct HyprlandEventReceiver(Arc<Mutex<Receiver<HyprIpcEvent>>>);
+
+#[derive(Debug, Clone)]
+enum HyprIpcEvent {
+    OpenWindow {
+        address: String,
+        workspace: String,
+        class: String,
+        title: String,
+    },
+    CloseWindow {
+        address: String,
+    },
+    Other(String),
+}
 
 fn main() {
     let client_list = load_clients();
@@ -61,6 +85,7 @@ fn main() {
         .insert_resource(IconAnimationState::default())
         .add_event::<IconRemovedEvent>()
         .add_systems(Startup, setup)
+        .add_systems(Startup, setup_hyprland_monitor)
         .add_systems(Update, cleanup_duplicate_cameras)
         .add_systems(Update, (
             scroll_system,
@@ -78,6 +103,7 @@ fn main() {
             drag_end_system.in_set(StateUpdate),
             reset_positions_system,
             reorder_icons_system.in_set(ReorderIcons),
+            process_hyprland_events,
         ).chain())
         .run();
 }
@@ -352,9 +378,9 @@ fn icon_click_system(
             if let Ok((camera, camera_transform)) = q_camera.get_single() {
                 if let Some(world_pos) = camera.viewport_to_world_2d(camera_transform, cursor_pos) {
                     for (transform, address_opt, favorite_opt, client_class) in &q_icons {
-                        let pos = transform.translation.truncate();
+                        let icon_position = transform.translation.truncate();
                         let size = Vec2::splat(ICON_SIZE);
-                        let rect = Rect::from_center_size(pos, size);
+                        let rect = Rect::from_center_size(icon_position, size);
                         if rect.contains(world_pos) {
                             if let Some(address) = address_opt {
                                 if address.0.starts_with("pinned:") {
@@ -392,5 +418,282 @@ fn focus_client(address: &str) {
             }
         }
         Err(e) => error!("Error executing hyprctl: {:?}", e),
+    }
+}
+
+fn get_current_windows() -> Result<Vec<Client>, std::io::Error> {
+    let output = Command::new("hyprctl")
+        .args(["clients", "-j"])
+        .output()?;
+
+    if !output.status.success() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "Failed to execute hyprctl",
+        ));
+    }
+
+    let json_str = String::from_utf8_lossy(&output.stdout);
+    let clients: Vec<Value> = serde_json::from_str(&json_str)?;
+
+    let mut result = Vec::new();
+    for client in clients {
+        if let (Some(address), Some(class)) = (client["address"].as_str(), client["class"].as_str()) {
+            result.push(Client {
+                address: address.to_string(),
+                class: class.to_string(),
+                name: client["name"].as_str().map(|s| s.to_string()),
+            });
+        }
+    }
+
+    Ok(result)
+}
+
+fn update_client_list_system(
+    mut client_list: ResMut<ClientList>,
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    windows: Query<&Window, With<PrimaryWindow>>,
+    config: Res<DockConfig>,
+    favorites: Res<Favorites>,
+    show_titles: Res<ShowTitles>,
+    q_entities: Query<(Entity, Option<&ClientAddress>)>,
+    mut images: ResMut<Assets<Image>>,
+) {
+    match get_current_windows() {
+        Ok(current_windows) => {
+            let current_addresses: HashSet<String> = current_windows
+                .iter()
+                .map(|c| c.address.clone())
+                .collect();
+            
+            let old_addresses: HashSet<String> = client_list.0
+                .iter()
+                .map(|c| c.address.clone())
+                .collect();
+
+            let new_windows: Vec<Client> = current_windows
+                .iter()
+                .filter(|c| !old_addresses.contains(&c.address))
+                .cloned()
+                .collect();
+
+            let closed_windows: Vec<String> = old_addresses
+                .difference(&current_addresses)
+                .cloned()
+                .collect();
+
+            if !new_windows.is_empty() || !closed_windows.is_empty() {
+                client_list.0 = current_windows.clone();
+
+                for address in closed_windows {
+                    if let Some((entity, _)) = q_entities.iter().find(|(_, addr)| addr.map(|a| a.0 == address).unwrap_or(false)) {
+                        commands.entity(entity).despawn();
+                    }
+                }
+
+                let window = windows.single();
+                let start_x = -window.width() / 2.0 + config.margin_x;
+                let start_y = -window.height() / 2.0 + config.margin_y;
+                let start_pos = Vec2::new(start_x, start_y);
+                let center = Vec2::new(0.0, 0.0);
+                let direction = (center - start_pos).normalize_or_zero();
+
+                for (index, client) in new_windows.iter().enumerate() {
+                    let (translation, scale) = calculate_icon_transform(
+                        index,
+                        start_pos,
+                        direction,
+                        &config,
+                        Vec2::ZERO
+                    );
+                    let transform = Transform {
+                        translation,
+                        scale: Vec3::splat(scale),
+                        ..default()
+                    };
+
+                    let icon_entity = spawn_icon_entity(
+                        &mut commands,
+                        &mut images,
+                        &asset_server,
+                        &client.class,
+                        transform,
+                        scale,
+                        1.0,
+                        index,
+                    );
+
+                    commands.entity(icon_entity).insert(HoverTarget {
+                        original_position: translation.truncate(),
+                        original_z: translation.z,
+                        original_scale: scale,
+                        index,
+                        is_hovered: false,
+                        hover_exit_timer: None,
+                    });
+
+                    add_client_address(&mut commands, icon_entity, client.address.clone());
+                    commands.entity(icon_entity).insert(ClientAddress(client.address.clone()));
+                    commands.entity(icon_entity).insert(ClientClass(client.class.clone()));
+
+                    if show_titles.0 {
+                        add_icon_text(
+                            &mut commands,
+                            icon_entity,
+                            &client.class,
+                            transform,
+                            scale,
+                            &asset_server,
+                        );
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            error!("Failed to get current windows: {:?}", e);
+        }
+    }
+}
+
+fn setup_hyprland_monitor(mut commands: Commands) {
+    let (event_sender, event_receiver) = channel();
+    let event_receiver = Arc::new(Mutex::new(event_receiver));
+
+    std::thread::spawn(move || {
+        let xdg_runtime_dir = match env::var("XDG_RUNTIME_DIR") {
+            Ok(val) => val,
+            Err(_) => return,
+        };
+        let hyprland_instance_signature = match env::var("HYPRLAND_INSTANCE_SIGNATURE") {
+            Ok(val) => val,
+            Err(_) => return,
+        };
+        let socket_path = format!("{}/hypr/{}/.socket2.sock", xdg_runtime_dir, hyprland_instance_signature);
+        let stream = match UnixStream::connect(socket_path) {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        let reader = BufReader::new(stream);
+
+        for line in reader.lines().flatten() {
+            if let Some(rest) = line.strip_prefix("openwindow>>") {
+                let mut parts = rest.splitn(4, ',');
+                if let (Some(address), Some(workspace), Some(class), Some(title)) =
+                    (parts.next(), parts.next(), parts.next(), parts.next())
+                {
+                    let _ = event_sender.send(HyprIpcEvent::OpenWindow {
+                        address: address.to_string(),
+                        workspace: workspace.to_string(),
+                        class: class.to_string(),
+                        title: title.to_string(),
+                    });
+                }
+            } else if let Some(rest) = line.strip_prefix("closewindow>>") {
+                let address = rest.trim().to_string();
+                let _ = event_sender.send(HyprIpcEvent::CloseWindow { address });
+            } else {
+                let _ = event_sender.send(HyprIpcEvent::Other(line));
+            }
+        }
+    });
+
+    commands.insert_resource(HyprlandEventReceiver(event_receiver));
+}
+
+fn process_hyprland_events(
+    mut commands: Commands,
+    mut client_list: ResMut<ClientList>,
+    mut dock_order: ResMut<DockOrder>,
+    mut reorder_trigger: ResMut<ReorderTrigger>,
+    event_receiver: Res<HyprlandEventReceiver>,
+    asset_server: Res<AssetServer>,
+    windows: Query<&Window, With<PrimaryWindow>>,
+    config: Res<DockConfig>,
+    favorites: Res<Favorites>,
+    show_titles: Res<ShowTitles>,
+    q_entities: Query<(Entity, Option<&ClientAddress>)>,
+    mut images: ResMut<Assets<Image>>,
+) {
+    let event_receiver = event_receiver.0.lock().unwrap();
+    while let Ok(event) = event_receiver.try_recv() {
+        match event {
+            HyprIpcEvent::OpenWindow { address, workspace, class, title } => {
+                let client = Client {
+                    address: address.clone(),
+                    class: class.clone(),
+                    name: Some(title.clone()),
+                };
+                if !client_list.0.iter().any(|c| c.address == client.address) {
+                    client_list.0.push(client.clone());
+                    dock_order.0.push(address.clone());
+                    reorder_trigger.0 = true;
+                    let window = windows.single();
+                    let start_x = -window.width() / 2.0 + config.margin_x;
+                    let start_y = -window.height() / 2.0 + config.margin_y;
+                    let start_pos = Vec2::new(start_x, start_y);
+                    let center = Vec2::new(0.0, 0.0);
+                    let direction = (center - start_pos).normalize_or_zero();
+
+                    let (translation, scale) = calculate_icon_transform(
+                        0,
+                        start_pos,
+                        direction,
+                        &config,
+                        Vec2::ZERO
+                    );
+                    let transform = Transform {
+                        translation,
+                        scale: Vec3::splat(scale),
+                        ..default()
+                    };
+
+                    let icon_entity = spawn_icon_entity(
+                        &mut commands,
+                        &mut images,
+                        &asset_server,
+                        &client.class,
+                        transform,
+                        scale,
+                        1.0,
+                        0,
+                    );
+
+                    commands.entity(icon_entity).insert(HoverTarget {
+                        original_position: translation.truncate(),
+                        original_z: translation.z,
+                        original_scale: scale,
+                        index: 0,
+                        is_hovered: false,
+                        hover_exit_timer: None,
+                    });
+
+                    add_client_address(&mut commands, icon_entity, client.address.clone());
+                    commands.entity(icon_entity).insert(ClientAddress(client.address.clone()));
+                    commands.entity(icon_entity).insert(ClientClass(client.class.clone()));
+
+                    if show_titles.0 {
+                        add_icon_text(
+                            &mut commands,
+                            icon_entity,
+                            &client.class,
+                            transform,
+                            scale,
+                            &asset_server,
+                        );
+                    }
+                }
+            }
+            HyprIpcEvent::CloseWindow { address } => {
+                if let Some((entity, _)) = q_entities.iter().find(|(_, addr)| addr.map(|a| a.0 == address).unwrap_or(false)) {
+                    commands.entity(entity).despawn();
+                }
+                client_list.0.retain(|c| c.address != address);
+                dock_order.0.retain(|a| a != &address);
+                reorder_trigger.0 = true;
+            }
+            HyprIpcEvent::Other(_) => {}
+        }
     }
 }
