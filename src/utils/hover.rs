@@ -5,6 +5,8 @@ use bevy::render::camera::Camera;
 use bevy::time::Time;
 use bevy::transform::components::{GlobalTransform, Transform};
 use bevy::window::PrimaryWindow;
+use bevy::time::Timer;
+use std::time::Duration;
 
 use crate::{Dragging, HoverTarget, MainCamera, UiState, ICON_SIZE, ScrollState, DockConfig};
 
@@ -17,6 +19,7 @@ pub fn hover_system(
     windows: Query<&Window, With<PrimaryWindow>>,
     q_camera: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
     mut q_icons: Query<(&mut HoverTarget, &Transform)>,
+    time: Res<Time>,
     ui_state: Res<UiState>,
 ) {
     if ui_state.dragging.is_some() {
@@ -27,16 +30,57 @@ pub fn hover_system(
     if let Ok((camera, camera_transform)) = q_camera.get_single() {
         if let Some(cursor_pos) = window.cursor_position() {
             if let Some(world_cursor) = camera.viewport_to_world_2d(camera_transform, cursor_pos) {
-                for (mut hover, transform) in &mut q_icons {
+                let mut hovered: Vec<(usize, f32)> = vec![];
+                for (i, (hover, transform)) in q_icons.iter().enumerate() {
                     let pos = transform.translation.truncate();
-                    let size = Vec2::splat(ICON_SIZE * hover.original_scale);
+                    let interaction_scale = 1.0;
+                    let size = Vec2::splat(ICON_SIZE * hover.original_scale * interaction_scale);
                     let rect = Rect::from_center_size(pos, size);
 
-                    let is_in_hover_area = rect.contains(world_cursor) || 
+                    let is_in_hover_area = rect.contains(world_cursor) ||
                         rect.min.distance(world_cursor) <= HOVER_TOLERANCE;
 
-                    hover.is_hovered = is_in_hover_area;
+                    if is_in_hover_area {
+                        hovered.push((i, transform.translation.z));
+                    }
                 }
+
+                let top = hovered.iter().max_by(|a, b| a.1.partial_cmp(&b.1).unwrap()).map(|(i, _)| *i);
+
+                for (i, (mut hover, _)) in q_icons.iter_mut().enumerate() {
+                    if Some(i) == top {
+                        hover.is_hovered = true;
+                        hover.hover_exit_timer = None;
+                    } else {
+                        if hover.is_hovered {
+                            if hover.hover_exit_timer.is_none() {
+                                hover.hover_exit_timer = Some(Timer::new(Duration::from_secs_f32(0.15), TimerMode::Once));
+                            }
+                        }
+                    }
+                }
+            } else {
+                for (mut hover, _) in &mut q_icons {
+                    if hover.is_hovered && hover.hover_exit_timer.is_none() {
+                        hover.hover_exit_timer = Some(Timer::new(Duration::from_secs_f32(0.15), TimerMode::Once));
+                    }
+                }
+            }
+        } else {
+            for (mut hover, _) in &mut q_icons {
+                if hover.is_hovered && hover.hover_exit_timer.is_none() {
+                    hover.hover_exit_timer = Some(Timer::new(Duration::from_secs_f32(0.15), TimerMode::Once));
+                }
+            }
+        }
+    }
+
+    for (mut hover, _) in &mut q_icons {
+        if let Some(timer) = hover.hover_exit_timer.as_mut() {
+            timer.tick(time.delta());
+            if timer.finished() {
+                hover.is_hovered = false;
+                hover.hover_exit_timer = None;
             }
         }
     }
