@@ -421,35 +421,6 @@ fn focus_client(address: &str) {
     }
 }
 
-fn get_current_windows() -> Result<Vec<Client>, std::io::Error> {
-    let output = Command::new("hyprctl")
-        .args(["clients", "-j"])
-        .output()?;
-
-    if !output.status.success() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "Failed to execute hyprctl",
-        ));
-    }
-
-    let json_str = String::from_utf8_lossy(&output.stdout);
-    let clients: Vec<Value> = serde_json::from_str(&json_str)?;
-
-    let mut result = Vec::new();
-    for client in clients {
-        if let (Some(address), Some(class)) = (client["address"].as_str(), client["class"].as_str()) {
-            result.push(Client {
-                address: address.to_string(),
-                class: class.to_string(),
-                name: client["name"].as_str().map(|s| s.to_string()),
-            });
-        }
-    }
-
-    Ok(result)
-}
-
 fn update_client_list_system(
     mut client_list: ResMut<ClientList>,
     mut commands: Commands,
@@ -461,7 +432,7 @@ fn update_client_list_system(
     q_entities: Query<(Entity, Option<&ClientAddress>)>,
     mut images: ResMut<Assets<Image>>,
 ) {
-    match get_current_windows() {
+    match crate::utils::loader::get_current_clients() {
         Ok(current_windows) => {
             let current_addresses: HashSet<String> = current_windows
                 .iter()
