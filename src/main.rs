@@ -33,23 +33,6 @@ static FONT_PATH: &str = "/usr/share/fonts/VictorMono/VictorMonoNerdFont-Medium.
 static FALLBACK_ICON_PATH: &str = "assets/dock_icon.svg";
 static ASSETS_ICON_PIN_PATH: &str = "pin_stroke_rounded.svg";
 
-#[derive(Resource, Clone)]
-struct HyprlandEventReceiver(Arc<Mutex<Receiver<HyprIpcEvent>>>);
-
-#[derive(Debug, Clone)]
-enum HyprIpcEvent {
-    OpenWindow {
-        address: String,
-        workspace: String,
-        class: String,
-        title: String,
-    },
-    CloseWindow {
-        address: String,
-    },
-    Other(String),
-}
-
 fn main() {
     let client_list = load_clients();
     let favorites = load_favorites();
