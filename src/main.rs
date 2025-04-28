@@ -224,11 +224,8 @@ fn setup(
 }
 
 fn update_sprite_alpha(sprite: &mut Sprite, has_favorite: bool, has_address: bool) {
-    sprite.color = if has_favorite && !has_address {
-        Color::rgba(1.0, 1.0, 1.0, 0.2)
-    } else {
-        Color::rgba(1.0, 1.0, 1.0, 1.0)
-    };
+    let alpha = if has_favorite && !has_address { 0.2 } else { 1.0 };
+    sprite.color = Color::rgba(1.0, 1.0, 1.0, alpha);
 }
 
 fn toggle_favorite_system(

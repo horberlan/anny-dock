@@ -10,7 +10,6 @@ use std::time::Duration;
 
 use crate::{Dragging, HoverTarget, MainCamera, UiState, ICON_SIZE, ScrollState, DockConfig};
 
-// const HOVER_TOLERANCE: f32 = 5.0;
 const HOVER_LIFT: f32 = 35.0;
 const HOVER_SCALE: f32 = 1.15;
 const ANIMATION_SMOOTHNESS: f32 = 0.85;
@@ -125,22 +124,37 @@ pub fn hover_animation_system(
     let first_visible_index = scroll.floor() as usize;
     let interp = scroll - scroll.floor();
 
+    let mut scales = vec![1.0; config.visible_items];
+    for i in 0..config.visible_items {
+        if i == 0 {
+            scales[i] = 1.2 - 0.2 * interp as f32;
+        } else if i == 1 {
+            scales[i] = 1.0 + 0.2 * interp as f32;
+        } else {
+            scales[i] = 1.0;
+        }
+    }
+
+    let sum: f32 = scales.iter().sum();
+    let norm = config.visible_items as f32 / sum;
+    for s in &mut scales {
+        *s *= norm;
+    }
+
     for (mut transform, hover, mut state) in &mut q {
         let base_scale = config.base_scale * config.scale_factor.powi(hover.index as i32);
 
         let in_window = hover.index >= first_visible_index
             && hover.index < first_visible_index + config.visible_items;
 
-        let mut target_scale = if in_window { base_scale } else { 0.0 };
+        let mut target_scale = 0.0;
+        if in_window {
+            let rel_idx = hover.index - first_visible_index;
+            target_scale = base_scale * scales[rel_idx];
+        }
 
         if hover.is_hovered && in_window {
             target_scale = base_scale * HOVER_SCALE;
-        } else if in_window {
-            if hover.index == first_visible_index {
-                target_scale = base_scale * (1.0 + 0.2 * (1.0 - interp as f32));
-            } else if hover.index == first_visible_index + 1 {
-                target_scale = base_scale * (1.0 + 0.2 * interp as f32);
-            }
         }
 
         state.target_scale = target_scale;
