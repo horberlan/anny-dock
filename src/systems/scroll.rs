@@ -25,7 +25,7 @@ pub fn scroll_system(
         
         scroll_state.total_scroll_distance -= scroll_amount;
         
-        let max_scroll = (total_items as f32 - config.visible_items as f32) * config.spacing;
+        let max_scroll = ((total_items as f32 - config.visible_items as f32).max(0.0)) * config.spacing;
         scroll_state.total_scroll_distance = scroll_state.total_scroll_distance.clamp(0.0, max_scroll);
         
         scroll_state.offset = scroll_direction * scroll_state.total_scroll_distance;

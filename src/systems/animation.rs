@@ -28,21 +28,6 @@ pub fn icon_scale_animation_system(
     }
 
     scroll_events.clear();
-
-    for (mut transform, hover) in q_icons.iter_mut() {
-        let base_scale = config.base_scale * config.scale_factor.powi(hover.index as i32);
-        
-        let target_scale = if scroll_animation.is_scrolling {
-            base_scale * 1.5
-        } else {
-            base_scale
-        };
-
-        let current_scale = transform.scale.x;
-        let new_scale = lerp(current_scale, target_scale, time.delta_seconds() * 5.0);
-
-        transform.scale = Vec3::splat(new_scale);
-    }
 }
 
 fn lerp(start: f32, end: f32, t: f32) -> f32 {

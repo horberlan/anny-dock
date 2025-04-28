@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use crate::{Dragging, HoverTarget, MainCamera, UiState, ICON_SIZE, ScrollState, DockConfig};
 
-const HOVER_TOLERANCE: f32 = 5.0;
+// const HOVER_TOLERANCE: f32 = 5.0;
 const HOVER_LIFT: f32 = 35.0;
 const HOVER_SCALE: f32 = 1.15;
 const ANIMATION_SMOOTHNESS: f32 = 0.85;
@@ -112,6 +112,8 @@ pub fn hover_animation_system(
         &mut HoverState,
     ), Without<Dragging>>,
     ui_state: Res<UiState>,
+    scroll_state: Res<ScrollState>,
+    config: Res<crate::utils::DockConfig>,
 ) {
     if ui_state.dragging.is_some() {
         return;
@@ -119,24 +121,41 @@ pub fn hover_animation_system(
 
     let delta_time = time.delta_seconds();
 
-    for (mut transform, hover, mut state) in &mut q {
-        state.target_lift = if hover.is_hovered { HOVER_LIFT } else { 0.0 };
-        state.target_scale = if hover.is_hovered {
-            hover.original_scale * HOVER_SCALE
-        } else {
-            hover.original_scale
-        };
+    let scroll = scroll_state.total_scroll_distance / config.spacing;
+    let first_visible_index = scroll.floor() as usize;
+    let interp = scroll - scroll.floor();
 
-        state.current_lift += (state.target_lift - state.current_lift) * 
-            (1.0 - ANIMATION_SMOOTHNESS.powf(delta_time * 60.0));
-        
-        state.current_scale += (state.target_scale - state.current_scale) * 
-            (1.0 - ANIMATION_SMOOTHNESS.powf(delta_time * 60.0));
+    for (mut transform, hover, mut state) in &mut q {
+        let base_scale = config.base_scale * config.scale_factor.powi(hover.index as i32);
+
+        let in_window = hover.index >= first_visible_index
+            && hover.index < first_visible_index + config.visible_items;
+
+        let mut target_scale = if in_window { base_scale } else { 0.0 };
+
+        if hover.is_hovered && in_window {
+            target_scale = base_scale * HOVER_SCALE;
+        } else if in_window {
+            if hover.index == first_visible_index {
+                target_scale = base_scale * (1.0 + 0.2 * (1.0 - interp as f32));
+            } else if hover.index == first_visible_index + 1 {
+                target_scale = base_scale * (1.0 + 0.2 * interp as f32);
+            }
+        }
+
+        state.target_scale = target_scale;
+        state.target_lift = if hover.is_hovered && in_window { HOVER_LIFT } else { 0.0 };
+
+        state.current_lift += (state.target_lift - state.current_lift)
+            * (1.0 - ANIMATION_SMOOTHNESS.powf(delta_time * 60.0));
+
+        state.current_scale += (state.target_scale - state.current_scale)
+            * (1.0 - ANIMATION_SMOOTHNESS.powf(delta_time * 60.0));
 
         transform.translation = Vec3::new(
             hover.original_position.x,
             hover.original_position.y + state.current_lift,
-            hover.original_z
+            hover.original_z,
         );
 
         transform.scale = Vec3::splat(state.current_scale);

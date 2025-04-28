@@ -163,7 +163,7 @@ pub struct DockConfig {
 impl Default for DockConfig {
     fn default() -> Self {
         Self {
-            margin_x: 50.0,
+            margin_x: 85.0,
             margin_y: 50.0,
             spacing: 40.0,
             z_spacing: 2.0,

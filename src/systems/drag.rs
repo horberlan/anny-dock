@@ -59,6 +59,7 @@ pub fn drag_update_system(
     q_camera: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
     mut q_dragging: Query<(&mut Transform, &Dragging, &HoverTarget)>,
     ui_state: Res<UiState>,
+    config: Res<DockConfig>,
 ) {
     if let Some(entity) = ui_state.dragging {
         if let Ok((mut transform, dragging, hover)) = q_dragging.get_mut(entity) {
@@ -71,7 +72,9 @@ pub fn drag_update_system(
                             let new_pos = world_cursor - dragging.offset;
                             transform.translation =
                                 Vec3::new(new_pos.x, new_pos.y, hover.original_z + 10.0);
-                            transform.scale = Vec3::splat(hover.original_scale * 1.2);
+
+                            let base_scale = config.base_scale * config.scale_factor.powi(hover.index as i32);
+                            transform.scale = Vec3::splat(base_scale * 1.1);
                         }
                     }
                 }
