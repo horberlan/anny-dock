@@ -12,13 +12,22 @@ use xdgkit::icon_finder;
 use crate::components::Favorites;
 use crate::{Client, FALLBACK_ICON_PATH};
 
-pub fn load_clients() -> Vec<Client> {
+pub fn get_current_clients() -> Result<Vec<Client>, std::io::Error> {
     let output = Command::new("hyprctl")
         .args(["clients", "-j"])
-        .output()
-        .expect("failed to run hyprctl");
+        .output()?;
 
-    serde_json::from_slice(&output.stdout).unwrap_or_default()
+    if !output.status.success() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "Failed to execute hyprctl",
+        ));
+    }
+
+    let clients: Vec<Client> = serde_json::from_slice(&output.stdout)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+
+    Ok(clients)
 }
 
 pub fn load_favorites() -> Favorites {
@@ -103,4 +112,8 @@ pub fn load_svg_image(path: &Path) -> Option<Image> {
         TextureFormat::Rgba8UnormSrgb,
     );
     Some(image)
+}
+
+pub fn load_clients() -> Vec<Client> {
+    get_current_clients().unwrap_or_default()
 }

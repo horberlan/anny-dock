@@ -23,7 +23,7 @@ struct FavoritePin;
 #[derive(Resource, Deserialize, Serialize, Clone, Default)]
 pub struct Favorites(pub Vec<String>);
 
-#[derive(Component)]
+#[derive(Component, Debug)]
 pub struct Favorite;
 
 use crate::{ClientAddress, IconText, ASSETS_ICON_PIN_PATH, FONT_PATH, ICON_SIZE};

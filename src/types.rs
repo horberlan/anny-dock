@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex, mpsc::Receiver};
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct Client {
@@ -13,10 +14,10 @@ pub struct Client {
 #[derive(Component)]
 pub struct ClientIcon;
 
-#[derive(Component)]
+#[derive(Component, Debug)]
 pub struct ClientAddress(pub String);
 
-#[derive(Component)]
+#[derive(Component, Debug)]
 pub struct ClientClass(pub String);
 
 #[derive(Resource)]
@@ -93,4 +94,21 @@ impl Default for ScrollState {
             max_visible_items: 8,
         }
     }
+}
+
+#[derive(Resource, Clone)]
+pub struct HyprlandEventReceiver(pub Arc<Mutex<Receiver<HyprIpcEvent>>>);
+
+#[derive(Debug, Clone)]
+pub enum HyprIpcEvent {
+    OpenWindow {
+        address: String,
+        workspace: String,
+        class: String,
+        title: String,
+    },
+    CloseWindow {
+        address: String,
+    },
+    Other(String),
 }

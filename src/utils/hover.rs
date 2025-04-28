@@ -29,34 +29,31 @@ pub fn hover_system(
     let window = windows.single();
     if let Ok((camera, camera_transform)) = q_camera.get_single() {
         if let Some(cursor_pos) = window.cursor_position() {
-            if let Some(world_cursor) = camera.viewport_to_world_2d(camera_transform, cursor_pos) {
-                let mut hovered: Vec<(usize, f32)> = vec![];
-                for (i, (hover, transform)) in q_icons.iter().enumerate() {
-                    let pos = transform.translation.truncate();
-                    let interaction_scale = 1.0;
-                    let size = Vec2::splat(ICON_SIZE * hover.original_scale * interaction_scale);
-                    let rect = Rect::from_center_size(pos, size);
-
-                    let is_in_hover_area = rect.contains(world_cursor) ||
-                        rect.min.distance(world_cursor) <= HOVER_TOLERANCE;
-
-                    if is_in_hover_area {
-                        hovered.push((i, transform.translation.z));
+            if let Some(world_pos) = camera.viewport_to_world_2d(camera_transform, cursor_pos) {
+                let mut top_hovered: Option<(usize, f32)> = None;
+                for (i, (_hover_target, transform)) in q_icons.iter().enumerate() {
+                    let icon_position = transform.translation.truncate();
+                    let size = Vec2::splat(ICON_SIZE);
+                    let rect = Rect::from_center_size(icon_position, size * 1.1);
+                    if rect.contains(world_pos) {
+                        let z = transform.translation.z;
+                        if top_hovered.is_none() || z > top_hovered.unwrap().1 {
+                            top_hovered = Some((i, z));
+                        }
                     }
                 }
 
-                let top = hovered.iter().max_by(|a, b| a.1.partial_cmp(&b.1).unwrap()).map(|(i, _)| *i);
-
-                for (i, (mut hover, _)) in q_icons.iter_mut().enumerate() {
-                    if Some(i) == top {
-                        hover.is_hovered = true;
-                        hover.hover_exit_timer = None;
-                    } else {
-                        if hover.is_hovered {
-                            if hover.hover_exit_timer.is_none() {
-                                hover.hover_exit_timer = Some(Timer::new(Duration::from_secs_f32(0.15), TimerMode::Once));
-                            }
+                for (i, (mut hover_target, _)) in q_icons.iter_mut().enumerate() {
+                    if Some(i) == top_hovered.map(|(idx, _)| idx) {
+                        if !hover_target.is_hovered {
+                            hover_target.is_hovered = true;
+                            hover_target.hover_exit_timer = None;
                         }
+                    } else {
+                        if hover_target.is_hovered && hover_target.hover_exit_timer.is_none() {
+                            hover_target.hover_exit_timer = Some(Timer::new(Duration::from_secs_f32(0.15), TimerMode::Once));
+                        }
+                        hover_target.is_hovered = false;
                     }
                 }
             } else {
@@ -64,6 +61,7 @@ pub fn hover_system(
                     if hover.is_hovered && hover.hover_exit_timer.is_none() {
                         hover.hover_exit_timer = Some(Timer::new(Duration::from_secs_f32(0.15), TimerMode::Once));
                     }
+                    hover.is_hovered = false;
                 }
             }
         } else {
@@ -71,6 +69,7 @@ pub fn hover_system(
                 if hover.is_hovered && hover.hover_exit_timer.is_none() {
                     hover.hover_exit_timer = Some(Timer::new(Duration::from_secs_f32(0.15), TimerMode::Once));
                 }
+                hover.is_hovered = false;
             }
         }
     }
@@ -118,7 +117,7 @@ pub fn hover_animation_system(
         return;
     }
 
-    let dt = time.delta_seconds();
+    let delta_time = time.delta_seconds();
 
     for (mut transform, hover, mut state) in &mut q {
         state.target_lift = if hover.is_hovered { HOVER_LIFT } else { 0.0 };
@@ -129,10 +128,10 @@ pub fn hover_animation_system(
         };
 
         state.current_lift += (state.target_lift - state.current_lift) * 
-            (1.0 - ANIMATION_SMOOTHNESS.powf(dt * 60.0));
+            (1.0 - ANIMATION_SMOOTHNESS.powf(delta_time * 60.0));
         
         state.current_scale += (state.target_scale - state.current_scale) * 
-            (1.0 - ANIMATION_SMOOTHNESS.powf(dt * 60.0));
+            (1.0 - ANIMATION_SMOOTHNESS.powf(delta_time * 60.0));
 
         transform.translation = Vec3::new(
             hover.original_position.x,
