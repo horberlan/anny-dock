@@ -371,7 +371,7 @@ fn icon_click_system(
                                     info!("launch_application, {}", client_class.0);
                                     launch_application(&client_class.0);
                                 } else {
-                                    info!("Chamando focus_client para address: {}", address.0);
+                                    info!("Calling focus_client to address: {}", address.0);
                                     focus_client(&address.0);
                                 }
                             } else if favorite_opt.is_some() {
@@ -420,128 +420,148 @@ fn update_client_list_system(
     mut q_entities: Query<(Entity, Option<&ClientAddress>, Option<&ClientClass>, Option<&mut Sprite>)>,
     mut images: ResMut<Assets<Image>>,
     mut dock_order: ResMut<DockOrder>,
+    mut reorder_trigger: ResMut<ReorderTrigger>,
 ) {
     match crate::utils::loader::get_current_clients() {
         Ok(current_windows) => {
-            let current_addresses: HashSet<String> = current_windows
-                .iter()
-                .map(|c| c.address.clone())
-                .collect();
-            
-            let old_addresses: HashSet<String> = client_list.0
-                .iter()
-                .map(|c| c.address.clone())
-                .collect();
+            let current_addresses: HashSet<String> = current_windows.iter().map(|c| c.address.clone()).collect();
+            let old_addresses: HashSet<String> = client_list.0.iter().map(|c| c.address.clone()).collect();
 
-            let new_windows: Vec<Client> = current_windows
-                .iter()
-                .filter(|c| !old_addresses.contains(&c.address))
-                .cloned()
-                .collect();
-
-            let closed_windows: Vec<String> = old_addresses
-                .difference(&current_addresses)
-                .cloned()
-                .collect();
+            let new_windows: Vec<Client> = current_windows.iter().filter(|c| !old_addresses.contains(&c.address)).cloned().collect();
+            let closed_windows: Vec<String> = old_addresses.difference(&current_addresses).cloned().collect();
 
             if !new_windows.is_empty() || !closed_windows.is_empty() {
                 client_list.0 = current_windows.clone();
 
-                for address in closed_windows {
-                    if let Some((entity, addr_opt, class_opt, Some(mut sprite))) = q_entities.iter_mut().find(|(_, addr, _, sprite)| addr.as_ref().map(|a| a.0 == address).unwrap_or(false) && sprite.is_some()) {
-                        if let (Some(addr), Some(class)) = (addr_opt, class_opt) {
-                            if favorites.0.contains(&class.0) {
-                                let pinned_addr = format!("pinned:{}", class.0);
-                                commands.entity(entity).insert(ClientAddress(pinned_addr.clone()));
-                                update_sprite_alpha(&mut sprite, true, false);
+                process_closed_windows(
+                    &closed_windows,
+                    &favorites,
+                    &mut q_entities,
+                    &mut dock_order,
+                    &mut commands,
+                );
 
-                                if let Some(pos) = dock_order.0.iter().position(|a| a == &address) {
-                                    dock_order.0[pos] = pinned_addr;
-                                }
-                            } else {
-                                commands.entity(entity).despawn();
-                                dock_order.0.retain(|a| a != &address);
-                            }
-                        }
-                    }
-                }
-
-                let window = windows.single();
-                let start_x = -window.width() / 2.0 + config.margin_x;
-                let start_y = -window.height() / 2.0 + config.margin_y;
-                let start_pos = Vec2::new(start_x, start_y);
-                let center = Vec2::new(0.0, 0.0);
-                let direction = (center - start_pos).normalize_or_zero();
-
-                for (index, client) in new_windows.iter().enumerate() {
-                    if let Some((entity, Some(_client_address), Some(client_class), Some(mut sprite))) = q_entities.iter_mut().find(|(_, addr, class, sprite)| {
-                        addr.as_ref().map(|a| a.0.starts_with("pinned:")).unwrap_or(false)
-                            && class.as_ref().map(|c| c.0 == client.class).unwrap_or(false)
-                            && sprite.is_some()
-                    }) {
-                        commands.entity(entity).insert(ClientAddress(client.address.clone()));
-                        sprite.color.set_a(1.0);
-
-                        let pinned_addr = format!("pinned:{}", client.class.clone());
-                        if let Some(pos) = dock_order.0.iter().position(|a| a == &pinned_addr) {
-                            dock_order.0[pos] = client.address.clone();
-                        }
-
-                        continue;
-                    }
-
-                    let (translation, scale) = calculate_icon_transform(
-                        index,
-                        start_pos,
-                        direction,
-                        &config,
-                        Vec2::ZERO
-                    );
-                    let transform = Transform {
-                        translation,
-                        scale: Vec3::splat(scale),
-                        ..default()
-                    };
-
-                    let icon_entity = spawn_icon_entity(
-                        &mut commands,
-                        &mut images,
-                        &asset_server,
-                        &client.class,
-                        transform,
-                        scale,
-                        1.0,
-                        index,
-                    );
-
-                    commands.entity(icon_entity).insert(HoverTarget {
-                        original_position: translation.truncate(),
-                        original_z: translation.z,
-                        original_scale: scale,
-                        index,
-                        is_hovered: false,
-                        hover_exit_timer: None,
-                    });
-
-                    add_client_address(&mut commands, icon_entity, client.address.clone());
-                    commands.entity(icon_entity).insert(ClientAddress(client.address.clone()));
-                    commands.entity(icon_entity).insert(ClientClass(client.class.clone()));
-
-                    if show_titles.0 {
-                        add_icon_text(
-                            &mut commands,
-                            icon_entity,
-                            &client.class,
-                            transform,
-                            scale,
-                            &asset_server,
-                        );
-                    }
-                }
+                process_new_windows(
+                    &new_windows,
+                    &mut q_entities,
+                    &mut commands,
+                    &mut images,
+                    &asset_server,
+                    &windows,
+                    &config,
+                    &show_titles,
+                    &mut dock_order,
+                    &mut client_list,
+                    &mut reorder_trigger,
+                );
             }
         }
         Err(e) => {
             error!("Failed to get current windows: {:?}", e);
+        }
+    }
+}
+
+fn process_closed_windows(
+    closed_windows: &[String],
+    favorites: &Favorites,
+    q_entities: &mut Query<(Entity, Option<&ClientAddress>, Option<&ClientClass>, Option<&mut Sprite>)>,
+    dock_order: &mut DockOrder,
+    commands: &mut Commands,
+) {
+    for address in closed_windows {
+        if let Some((entity, addr_opt, class_opt, Some(mut sprite))) = q_entities.iter_mut().find(|(_, addr, _, sprite)| addr.as_ref().map(|a| a.0 == *address).unwrap_or(false) && sprite.is_some()) {
+            if let (Some(_addr), Some(class)) = (addr_opt, class_opt) {
+                if favorites.0.contains(&class.0) {
+                    handle_close_pinned_window(entity, address, &class.0, &mut sprite, dock_order, commands);
+                } else {
+                    commands.entity(entity).despawn();
+                    dock_order.0.retain(|a| a != address);
+                }
+            }
+        }
+    }
+}
+
+fn process_new_windows(
+    new_windows: &[Client],
+    q_entities: &mut Query<(Entity, Option<&ClientAddress>, Option<&ClientClass>, Option<&mut Sprite>)>,
+    commands: &mut Commands,
+    images: &mut ResMut<Assets<Image>>,
+    asset_server: &Res<AssetServer>,
+    windows: &Query<&Window, With<PrimaryWindow>>,
+    config: &Res<DockConfig>,
+    show_titles: &Res<ShowTitles>,
+    dock_order: &mut DockOrder,
+    client_list: &mut ResMut<ClientList>,
+    reorder_trigger: &mut ResMut<ReorderTrigger>,
+) {
+    let window = windows.single();
+    let start_x = -window.width() / 2.0 + config.margin_x;
+    let start_y = -window.height() / 2.0 + config.margin_y;
+    let start_pos = Vec2::new(start_x, start_y);
+    let center = Vec2::new(0.0, 0.0);
+    let direction = (center - start_pos).normalize_or_zero();
+
+    for (index, client) in new_windows.iter().enumerate() {
+        if let Some((entity, Some(_client_address), Some(client_class), Some(mut sprite))) = q_entities.iter_mut().find(|(_, addr, class, sprite)| {
+            addr.as_ref().map(|a| a.0.starts_with("pinned:")).unwrap_or(false)
+                && class.as_ref().map(|c| c.0 == client.class).unwrap_or(false)
+                && sprite.is_some()
+        }) {
+            commands.entity(entity).insert(ClientAddress(client.address.clone()));
+            handle_open_pinned_window(entity, client, &mut sprite, dock_order);
+            client_list.0.push(client.clone());
+            reorder_trigger.0 = true;
+            continue;
+        }
+
+        let (translation, scale) = calculate_icon_transform(
+            index,
+            start_pos,
+            direction,
+            config,
+            Vec2::ZERO
+        );
+        let transform = Transform {
+            translation,
+            scale: Vec3::splat(scale),
+            ..default()
+        };
+
+        let icon_entity = spawn_icon_entity(
+            commands,
+            images,
+            asset_server,
+            &client.class,
+            transform,
+            scale,
+            1.0,
+            index,
+        );
+
+        commands.entity(icon_entity).insert(HoverTarget {
+            original_position: translation.truncate(),
+            original_z: translation.z,
+            original_scale: scale,
+            index,
+            is_hovered: false,
+            hover_exit_timer: None,
+        });
+
+        add_client_address(commands, icon_entity, client.address.clone());
+        commands.entity(icon_entity).insert(ClientAddress(client.address.clone()));
+        commands.entity(icon_entity).insert(ClientClass(client.class.clone()));
+
+        if show_titles.0 {
+            add_icon_text(
+                commands,
+                icon_entity,
+                &client.class,
+                transform,
+                scale,
+                asset_server,
+            );
         }
     }
 }
@@ -609,110 +629,181 @@ fn process_hyprland_events(
     while let Ok(event) = event_receiver.try_recv() {
         match event {
             HyprIpcEvent::OpenWindow { address, workspace, class, title } => {
-                let client = Client {
-                    address: address.clone(),
-                    class: class.clone(),
-                    name: Some(title.clone()),
-                };
-                if !client_list.0.iter().any(|c| c.address == client.address) {
-                    if let Some((entity, Some(_client_address), Some(client_class), Some(mut sprite))) = q_entities.iter_mut().find(|(_, addr, class, sprite)| {
-                        addr.as_ref().map(|a| a.0.starts_with("pinned:")).unwrap_or(false)
-                            && class.as_ref().map(|c| c.0 == client.class).unwrap_or(false)
-                            && sprite.is_some()
-                    }) {
-                        commands.entity(entity).insert(ClientAddress(client.address.clone()));
-                        sprite.color.set_a(1.0);
-
-                        let pinned_addr = format!("pinned:{}", client.class.clone());
-                        if let Some(pos) = dock_order.0.iter().position(|a| a == &pinned_addr) {
-                            dock_order.0[pos] = client.address.clone();
-                        }
-
-                        client_list.0.push(client.clone());
-                        reorder_trigger.0 = true;
-                        continue;
-                    }
-
-                    client_list.0.push(client.clone());
-                    dock_order.0.push(address.clone());
-                    reorder_trigger.0 = true;
-                    let window = windows.single();
-                    let start_x = -window.width() / 2.0 + config.margin_x;
-                    let start_y = -window.height() / 2.0 + config.margin_y;
-                    let start_pos = Vec2::new(start_x, start_y);
-                    let center = Vec2::new(0.0, 0.0);
-                    let direction = (center - start_pos).normalize_or_zero();
-
-                    let (translation, scale) = calculate_icon_transform(
-                        0,
-                        start_pos,
-                        direction,
-                        &config,
-                        Vec2::ZERO
-                    );
-                    let transform = Transform {
-                        translation,
-                        scale: Vec3::splat(scale),
-                        ..default()
-                    };
-
-                    let icon_entity = spawn_icon_entity(
-                        &mut commands,
-                        &mut images,
-                        &asset_server,
-                        &client.class,
-                        transform,
-                        scale,
-                        1.0,
-                        0,
-                    );
-
-                    commands.entity(icon_entity).insert(HoverTarget {
-                        original_position: translation.truncate(),
-                        original_z: translation.z,
-                        original_scale: scale,
-                        index: 0,
-                        is_hovered: false,
-                        hover_exit_timer: None,
-                    });
-
-                    add_client_address(&mut commands, icon_entity, client.address.clone());
-                    commands.entity(icon_entity).insert(ClientAddress(client.address.clone()));
-                    commands.entity(icon_entity).insert(ClientClass(client.class.clone()));
-
-                    if show_titles.0 {
-                        add_icon_text(
-                            &mut commands,
-                            icon_entity,
-                            &client.class,
-                            transform,
-                            scale,
-                            &asset_server,
-                        );
-                    }
-                }
+                handle_hypr_open_window(
+                    &mut commands,
+                    &mut client_list,
+                    &mut dock_order,
+                    &mut reorder_trigger,
+                    &asset_server,
+                    &windows,
+                    &config,
+                    &favorites,
+                    &show_titles,
+                    &mut q_entities,
+                    &mut images,
+                    address,
+                    class,
+                    title,
+                );
             }
             HyprIpcEvent::CloseWindow { address } => {
-                if let Some((entity, addr_opt, class_opt, Some(mut sprite))) = q_entities.iter_mut().find(|(_, addr, _, sprite)| addr.as_ref().map(|a| a.0 == address).unwrap_or(false) && sprite.is_some()) {
-                    if let (Some(addr), Some(class)) = (addr_opt, class_opt) {
-                        if favorites.0.contains(&class.0) {
-                            let pinned_addr = format!("pinned:{}", class.0);
-                            commands.entity(entity).insert(ClientAddress(pinned_addr.clone()));
-                            update_sprite_alpha(&mut sprite, true, false);
-
-                            if let Some(pos) = dock_order.0.iter().position(|a| a == &address) {
-                                dock_order.0[pos] = pinned_addr;
-                            }
-                        } else {
-                            commands.entity(entity).despawn();
-                            dock_order.0.retain(|a| a != &address);
-                        }
-                    }
-                }
-                client_list.0.retain(|c| c.address != address);
-                reorder_trigger.0 = true;
+                handle_hypr_close_window(
+                    &mut commands,
+                    &mut client_list,
+                    &mut dock_order,
+                    &mut reorder_trigger,
+                    &favorites,
+                    &mut q_entities,
+                    address,
+                );
             }
             HyprIpcEvent::Other(_) => {}
         }
+    }
+}
+
+fn handle_hypr_open_window(
+    commands: &mut Commands,
+    client_list: &mut ResMut<ClientList>,
+    dock_order: &mut ResMut<DockOrder>,
+    reorder_trigger: &mut ResMut<ReorderTrigger>,
+    asset_server: &Res<AssetServer>,
+    windows: &Query<&Window, With<PrimaryWindow>>,
+    config: &Res<DockConfig>,
+    favorites: &Res<Favorites>,
+    show_titles: &Res<ShowTitles>,
+    q_entities: &mut Query<(Entity, Option<&ClientAddress>, Option<&ClientClass>, Option<&mut Sprite>)>,
+    images: &mut ResMut<Assets<Image>>,
+    address: String,
+    class: String,
+    title: String,
+) {
+    let client = Client {
+        address: address.clone(),
+        class: class.clone(),
+        name: Some(title.clone()),
+    };
+    if let Some((entity, Some(_client_address), Some(client_class), Some(mut sprite))) = q_entities.iter_mut().find(|(_, addr, class, sprite)| {
+        addr.as_ref().map(|a| a.0.starts_with("pinned:")).unwrap_or(false)
+            && class.as_ref().map(|c| c.0 == client.class).unwrap_or(false)
+            && sprite.is_some()
+    }) {
+        commands.entity(entity).insert(ClientAddress(client.address.clone()));
+        handle_open_pinned_window(entity, &client, &mut sprite, dock_order);
+        client_list.0.push(client.clone());
+        reorder_trigger.0 = true;
+        return;
+    }
+
+    client_list.0.push(client.clone());
+    dock_order.0.push(address.clone());
+    reorder_trigger.0 = true;
+    let window = windows.single();
+    let start_x = -window.width() / 2.0 + config.margin_x;
+    let start_y = -window.height() / 2.0 + config.margin_y;
+    let start_pos = Vec2::new(start_x, start_y);
+    let center = Vec2::new(0.0, 0.0);
+    let direction = (center - start_pos).normalize_or_zero();
+
+    let (translation, scale) = calculate_icon_transform(
+        0,
+        start_pos,
+        direction,
+        &config,
+        Vec2::ZERO
+    );
+    let transform = Transform {
+        translation,
+        scale: Vec3::splat(scale),
+        ..default()
+    };
+
+    let icon_entity = spawn_icon_entity(
+        commands,
+        images,
+        asset_server,
+        &client.class,
+        transform,
+        scale,
+        1.0,
+        0,
+    );
+
+    commands.entity(icon_entity).insert(HoverTarget {
+        original_position: translation.truncate(),
+        original_z: translation.z,
+        original_scale: scale,
+        index: 0,
+        is_hovered: false,
+        hover_exit_timer: None,
+    });
+
+    add_client_address(commands, icon_entity, client.address.clone());
+    commands.entity(icon_entity).insert(ClientAddress(client.address.clone()));
+    commands.entity(icon_entity).insert(ClientClass(client.class.clone()));
+
+    if show_titles.0 {
+        add_icon_text(
+            commands,
+            icon_entity,
+            &client.class,
+            transform,
+            scale,
+            asset_server,
+        );
+    }
+}
+
+fn handle_hypr_close_window(
+    commands: &mut Commands,
+    client_list: &mut ResMut<ClientList>,
+    dock_order: &mut ResMut<DockOrder>,
+    reorder_trigger: &mut ResMut<ReorderTrigger>,
+    favorites: &Res<Favorites>,
+    q_entities: &mut Query<(Entity, Option<&ClientAddress>, Option<&ClientClass>, Option<&mut Sprite>)>,
+    address: String,
+) {
+    if let Some((entity, addr_opt, class_opt, Some(mut sprite))) = q_entities.iter_mut().find(|(_, addr, _, sprite)| addr.as_ref().map(|a| a.0 == address).unwrap_or(false) && sprite.is_some()) {
+        if let (Some(addr), Some(class)) = (addr_opt, class_opt) {
+            if favorites.0.contains(&class.0) {
+                handle_close_pinned_window(entity, &address, &class.0, &mut sprite, dock_order, commands);
+            } else {
+                commands.entity(entity).despawn();
+                dock_order.0.retain(|a| a != &address);
+            }
+        }
+    }
+    client_list.0.retain(|c| c.address != address);
+    reorder_trigger.0 = true;
+}
+
+fn handle_open_pinned_window(
+    entity: Entity,
+    client: &Client,
+    sprite: &mut Sprite,
+    dock_order: &mut DockOrder,
+) {
+    sprite.color.set_a(1.0);
+
+    let pinned_addr = format!("pinned:{}", client.class.clone());
+    if let Some(index) = dock_order.0.iter().position(|a| a == &pinned_addr) {
+        dock_order.0[index] = client.address.clone();
+    }
+}
+
+fn handle_close_pinned_window(
+    entity: Entity,
+    address: &str,
+    class: &str,
+    sprite: &mut Sprite,
+    dock_order: &mut DockOrder,
+    commands: &mut Commands,
+) {
+    let pinned_addr = format!("pinned:{}", class);
+    commands.entity(entity).insert(ClientAddress(pinned_addr.clone()));
+    update_sprite_alpha(sprite, true, false);
+
+    if let Some(index) = dock_order.0.iter().position(|a| a == address) {
+        dock_order.0[index] = pinned_addr;
     }
 }
