@@ -365,11 +365,13 @@ fn icon_click_system(
                         let size = Vec2::splat(ICON_SIZE);
                         let rect = Rect::from_center_size(icon_position, size);
                         if rect.contains(world_pos) {
+                            dbg!(&address_opt, &favorite_opt, &client_class);
                             if let Some(address) = address_opt {
                                 if address.0.starts_with("pinned:") {
                                     info!("launch_application, {}", client_class.0);
                                     launch_application(&client_class.0);
                                 } else {
+                                    info!("Chamando focus_client para address: {}", address.0);
                                     focus_client(&address.0);
                                 }
                             } else if favorite_opt.is_some() {
@@ -386,8 +388,11 @@ fn icon_click_system(
 }
 
 fn focus_client(address: &str) {
-    let full_address = format!("address:{}", address.trim_start_matches("address:"));
-    info!("Executing hyprctl dispatch focuswindow {}", full_address);
+    let full_address = if address.starts_with("address:") {
+        address.to_string()
+    } else {
+        format!("address:{}", address)
+    };
     let output = Command::new("hyprctl")
         .args(["dispatch", "focuswindow", &full_address])
         .output();
@@ -412,8 +417,9 @@ fn update_client_list_system(
     config: Res<DockConfig>,
     favorites: Res<Favorites>,
     show_titles: Res<ShowTitles>,
-    q_entities: Query<(Entity, Option<&ClientAddress>)>,
+    mut q_entities: Query<(Entity, Option<&ClientAddress>, Option<&ClientClass>, Option<&mut Sprite>)>,
     mut images: ResMut<Assets<Image>>,
+    mut dock_order: ResMut<DockOrder>,
 ) {
     match crate::utils::loader::get_current_clients() {
         Ok(current_windows) => {
@@ -442,8 +448,21 @@ fn update_client_list_system(
                 client_list.0 = current_windows.clone();
 
                 for address in closed_windows {
-                    if let Some((entity, _)) = q_entities.iter().find(|(_, addr)| addr.map(|a| a.0 == address).unwrap_or(false)) {
-                        commands.entity(entity).despawn();
+                    if let Some((entity, addr_opt, class_opt, Some(mut sprite))) = q_entities.iter_mut().find(|(_, addr, _, sprite)| addr.as_ref().map(|a| a.0 == address).unwrap_or(false) && sprite.is_some()) {
+                        if let (Some(addr), Some(class)) = (addr_opt, class_opt) {
+                            if favorites.0.contains(&class.0) {
+                                let pinned_addr = format!("pinned:{}", class.0);
+                                commands.entity(entity).insert(ClientAddress(pinned_addr.clone()));
+                                update_sprite_alpha(&mut sprite, true, false);
+
+                                if let Some(pos) = dock_order.0.iter().position(|a| a == &address) {
+                                    dock_order.0[pos] = pinned_addr;
+                                }
+                            } else {
+                                commands.entity(entity).despawn();
+                                dock_order.0.retain(|a| a != &address);
+                            }
+                        }
                     }
                 }
 
@@ -455,6 +474,22 @@ fn update_client_list_system(
                 let direction = (center - start_pos).normalize_or_zero();
 
                 for (index, client) in new_windows.iter().enumerate() {
+                    if let Some((entity, Some(_client_address), Some(client_class), Some(mut sprite))) = q_entities.iter_mut().find(|(_, addr, class, sprite)| {
+                        addr.as_ref().map(|a| a.0.starts_with("pinned:")).unwrap_or(false)
+                            && class.as_ref().map(|c| c.0 == client.class).unwrap_or(false)
+                            && sprite.is_some()
+                    }) {
+                        commands.entity(entity).insert(ClientAddress(client.address.clone()));
+                        sprite.color.set_a(1.0);
+
+                        let pinned_addr = format!("pinned:{}", client.class.clone());
+                        if let Some(pos) = dock_order.0.iter().position(|a| a == &pinned_addr) {
+                            dock_order.0[pos] = client.address.clone();
+                        }
+
+                        continue;
+                    }
+
                     let (translation, scale) = calculate_icon_transform(
                         index,
                         start_pos,
@@ -567,7 +602,7 @@ fn process_hyprland_events(
     config: Res<DockConfig>,
     favorites: Res<Favorites>,
     show_titles: Res<ShowTitles>,
-    q_entities: Query<(Entity, Option<&ClientAddress>)>,
+    mut q_entities: Query<(Entity, Option<&ClientAddress>, Option<&ClientClass>, Option<&mut Sprite>)>,
     mut images: ResMut<Assets<Image>>,
 ) {
     let event_receiver = event_receiver.0.lock().unwrap();
@@ -580,6 +615,24 @@ fn process_hyprland_events(
                     name: Some(title.clone()),
                 };
                 if !client_list.0.iter().any(|c| c.address == client.address) {
+                    if let Some((entity, Some(_client_address), Some(client_class), Some(mut sprite))) = q_entities.iter_mut().find(|(_, addr, class, sprite)| {
+                        addr.as_ref().map(|a| a.0.starts_with("pinned:")).unwrap_or(false)
+                            && class.as_ref().map(|c| c.0 == client.class).unwrap_or(false)
+                            && sprite.is_some()
+                    }) {
+                        commands.entity(entity).insert(ClientAddress(client.address.clone()));
+                        sprite.color.set_a(1.0);
+
+                        let pinned_addr = format!("pinned:{}", client.class.clone());
+                        if let Some(pos) = dock_order.0.iter().position(|a| a == &pinned_addr) {
+                            dock_order.0[pos] = client.address.clone();
+                        }
+
+                        client_list.0.push(client.clone());
+                        reorder_trigger.0 = true;
+                        continue;
+                    }
+
                     client_list.0.push(client.clone());
                     dock_order.0.push(address.clone());
                     reorder_trigger.0 = true;
@@ -640,11 +693,23 @@ fn process_hyprland_events(
                 }
             }
             HyprIpcEvent::CloseWindow { address } => {
-                if let Some((entity, _)) = q_entities.iter().find(|(_, addr)| addr.map(|a| a.0 == address).unwrap_or(false)) {
-                    commands.entity(entity).despawn();
+                if let Some((entity, addr_opt, class_opt, Some(mut sprite))) = q_entities.iter_mut().find(|(_, addr, _, sprite)| addr.as_ref().map(|a| a.0 == address).unwrap_or(false) && sprite.is_some()) {
+                    if let (Some(addr), Some(class)) = (addr_opt, class_opt) {
+                        if favorites.0.contains(&class.0) {
+                            let pinned_addr = format!("pinned:{}", class.0);
+                            commands.entity(entity).insert(ClientAddress(pinned_addr.clone()));
+                            update_sprite_alpha(&mut sprite, true, false);
+
+                            if let Some(pos) = dock_order.0.iter().position(|a| a == &address) {
+                                dock_order.0[pos] = pinned_addr;
+                            }
+                        } else {
+                            commands.entity(entity).despawn();
+                            dock_order.0.retain(|a| a != &address);
+                        }
+                    }
                 }
                 client_list.0.retain(|c| c.address != address);
-                dock_order.0.retain(|a| a != &address);
                 reorder_trigger.0 = true;
             }
             HyprIpcEvent::Other(_) => {}

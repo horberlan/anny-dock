@@ -14,10 +14,10 @@ pub struct Client {
 #[derive(Component)]
 pub struct ClientIcon;
 
-#[derive(Component)]
+#[derive(Component, Debug)]
 pub struct ClientAddress(pub String);
 
-#[derive(Component)]
+#[derive(Component, Debug)]
 pub struct ClientClass(pub String);
 
 #[derive(Resource)]
