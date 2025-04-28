@@ -3,11 +3,12 @@ mod icon;
 mod title;
 mod camera;
 mod scroll;
-mod animation;
+pub mod animation;
 
 pub use drag::*;
 pub use icon::*;
 pub use title::*;
 pub use camera::*;
 pub use scroll::*;
-pub use animation::*; 
+pub use animation::ScrollAnimationState;
+pub use animation::icon_scale_animation_system; 

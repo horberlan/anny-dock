@@ -28,6 +28,7 @@ use std::env;
 use std::os::unix::net::UnixStream;
 
 use crate::systems::*;
+use systems::animation::ScrollAnimationState;
 
 static FONT_PATH: &str = "/usr/share/fonts/VictorMono/VictorMonoNerdFont-Medium.ttf";
 static FALLBACK_ICON_PATH: &str = "assets/dock_icon.svg";
@@ -66,6 +67,7 @@ fn main() {
         .insert_resource(ScrollState::default())
         .insert_resource(DockConfig::default())
         .insert_resource(IconAnimationState::default())
+        .insert_resource(ScrollAnimationState::default())
         .add_event::<IconRemovedEvent>()
         .add_systems(Startup, setup)
         .add_systems(Startup, setup_hyprland_monitor)
