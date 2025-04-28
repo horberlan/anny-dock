@@ -18,6 +18,7 @@ use utils::{
     calculate_icon_transform, launch_application, load_clients, load_favorites, save_favorites,
     DockConfig,
 };
+use utils::IconAnimationState;
 
 use crate::systems::*;
 
@@ -55,22 +56,29 @@ fn main() {
         .insert_resource(favorites)
         .insert_resource(ReorderTrigger::default())
         .insert_resource(DockOrder::default())
+        .insert_resource(ScrollState::default())
+        .insert_resource(DockConfig::default())
+        .insert_resource(IconAnimationState::default())
         .add_event::<IconRemovedEvent>()
         .add_systems(Startup, setup)
         .add_systems(Update, cleanup_duplicate_cameras)
-        .add_systems(Update, hover_system)
-        .add_systems(Update, hover_animation_system)
-        .add_systems(Update, collect_icon_data.before(update_text_positions))
-        .add_systems(Update, update_text_positions)
-        .add_systems(Update, icon_click_system)
-        .add_systems(Update, toggle_favorite_system.in_set(StateUpdate))
-        .add_systems(Update, toggle_titles)
-        .add_systems(Update, drag_register_click_system)
-        .add_systems(Update, drag_check_system)
-        .add_systems(Update, drag_update_system)
-        .add_systems(Update, drag_end_system.in_set(StateUpdate))
-        .add_systems(Update, reset_positions_system)
-        .add_systems(PostUpdate, reorder_icons_system.in_set(ReorderIcons))
+        .add_systems(Update, (
+            scroll_system,
+            hover_system,
+            hover_animation_system,
+            icon_scale_animation_system,
+            collect_icon_data.before(update_text_positions),
+            update_text_positions,
+            icon_click_system,
+            toggle_favorite_system.in_set(StateUpdate),
+            toggle_titles,
+            drag_register_click_system,
+            drag_check_system,
+            drag_update_system,
+            drag_end_system.in_set(StateUpdate),
+            reset_positions_system,
+            reorder_icons_system.in_set(ReorderIcons),
+        ).chain())
         .run();
 }
 
@@ -82,6 +90,7 @@ fn setup(
     windows: Query<&Window, With<PrimaryWindow>>,
     show_titles: Res<ShowTitles>,
     favorites: Res<Favorites>,
+    config: Res<DockConfig>,
 ) {
     commands
         .spawn(Camera2dBundle {
@@ -97,7 +106,6 @@ fn setup(
     let window_width = window.width();
     let window_height = window.height();
 
-    let config = DockConfig::default();
     let start_x = -window_width / 2.0 + config.margin_x;
     let start_y = -window_height / 2.0 + config.margin_y;
     let start_pos = Vec2::new(start_x, start_y);
@@ -131,7 +139,13 @@ fn setup(
     commands.insert_resource(DockOrder(initial_order));
 
     for (index, (class, client_opt, is_favorite)) in all_apps.iter().enumerate() {
-        let (translation, scale) = calculate_icon_transform(index, start_pos, direction, &config);
+        let (translation, scale) = calculate_icon_transform(
+            index,
+            start_pos,
+            direction,
+            &config,
+            Vec2::ZERO
+        );
         let transform = Transform {
             translation,
             scale: Vec3::splat(scale),
@@ -224,6 +238,7 @@ fn toggle_favorite_system(
     mut favorites: ResMut<Favorites>,
     client_list: Res<ClientList>,
     mut icon_removed_writer: EventWriter<IconRemovedEvent>,
+    dock_order: Res<DockOrder>,
 ) {
     if buttons.just_released(MouseButton::Right) {
         let window = windows.single();
@@ -255,6 +270,7 @@ fn toggle_favorite_system(
                                 client_address_opt,
                                 client_list,
                                 &mut icon_removed_writer,
+                                &dock_order,
                             );
                             break;
                         }
@@ -276,6 +292,7 @@ fn toggle_favorite(
     q_address: Option<&ClientAddress>,
     client_list: Res<ClientList>,
     icon_removed_writer: &mut EventWriter<IconRemovedEvent>,
+    dock_order: &Res<DockOrder>,
 ) {
     if is_favorite {
         info!("Removing favorite: {}", app_class);
@@ -288,17 +305,11 @@ fn toggle_favorite(
             commands.entity(entity).despawn();
             icon_removed_writer.send(IconRemovedEvent(address.clone()));
             
-            let mut new_order: Vec<String> = client_list
-                .0
+            let new_order: Vec<String> = dock_order.0
                 .iter()
-                .map(|c| c.address.clone())
+                .filter(|addr| addr != &&address)
+                .cloned()
                 .collect();
-
-            for fav in &favorites.0 {
-                if let None = client_list.0.iter().find(|c| &c.class == fav) {
-                    new_order.push(format!("pinned:{}", fav));
-                }
-            }
 
             commands.insert_resource(DockOrder(new_order));
             commands.insert_resource(ReorderTrigger(true));

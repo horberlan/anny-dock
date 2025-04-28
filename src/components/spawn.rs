@@ -11,7 +11,7 @@ use bevy::{
 use std::path::Path;
 
 use crate::{
-    utils::{get_icon_path, load_icon},
+    utils::{get_icon_path, hover::HoverState, load_icon},
     ClientClass, ClientIcon, HoverTarget,
 };
 
@@ -45,8 +45,9 @@ pub(crate) fn spawn_icon_entity(
                 original_scale: scale,
                 index,
                 is_hovered: false,
-                hover_exit_timer: None, // Added to fix the error
+                hover_exit_timer: None,
             })
+            .insert(HoverState::default())
             .insert(Name::new(class.to_string()))
             .id()
     } else {

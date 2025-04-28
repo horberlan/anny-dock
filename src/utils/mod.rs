@@ -5,6 +5,7 @@ use bevy::log::{error, info, warn};
 use bevy::math::{Vec2, Vec3};
 use std::fs;
 use std::process::Command;
+use bevy::prelude::*;
 
 pub fn launch_application(class: &str) {
     match find_exec_for_class(class) {
@@ -147,6 +148,7 @@ fn parse_desktop_file(content: &str, class: &str) -> Option<String> {
     }
 }
 
+#[derive(Resource)]
 pub struct DockConfig {
     pub margin_x: f32,
     pub margin_y: f32,
@@ -154,6 +156,8 @@ pub struct DockConfig {
     pub z_spacing: f32,
     pub base_scale: f32,
     pub scale_factor: f32,
+    pub scroll_speed: f32,
+    pub visible_items: usize,
 }
 
 impl Default for DockConfig {
@@ -165,6 +169,23 @@ impl Default for DockConfig {
             z_spacing: 2.0,
             base_scale: 1.2,
             scale_factor: 0.9,
+            scroll_speed: 15.0,
+            visible_items: 8,
+        }
+    }
+}
+
+#[derive(Resource)]
+pub struct IconAnimationState {
+    pub is_scrolling: bool,
+    pub scroll_timer: Timer,
+}
+
+impl Default for IconAnimationState {
+    fn default() -> Self {
+        Self {
+            is_scrolling: false,
+            scroll_timer: Timer::from_seconds(0.3, TimerMode::Once),
         }
     }
 }
@@ -174,13 +195,24 @@ pub fn calculate_icon_transform(
     start_pos: Vec2,
     direction: Vec2,
     config: &DockConfig,
+    scroll_offset: Vec2,
 ) -> (Vec3, f32) {
-    let offset = direction * (index as f32 * config.spacing);
-    let pos = start_pos + offset;
-    let x = pos.x;
-    let y = pos.y;
+    let base_offset = direction * (index as f32 * config.spacing);
+    let scrolled_pos = start_pos + base_offset - scroll_offset;
+    
+    let x = scrolled_pos.x;
+    let y = scrolled_pos.y;
     let z = -(index as f32 * config.z_spacing);
-    let scale = config.base_scale * config.scale_factor.powi(index as i32);
+    
+    let base_scale = config.base_scale * config.scale_factor.powi(index as i32);
+    
+    let is_scrolling = scroll_offset.length() > 0.1;
+    let scale = if is_scrolling {
+        config.base_scale
+    } else {
+        base_scale
+    };
+    
     (Vec3::new(x, y, z), scale)
 }
 
