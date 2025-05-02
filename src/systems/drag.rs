@@ -1,7 +1,6 @@
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use crate::types::*;
-use crate::components::*;
 use crate::utils::DockConfig;
 
 pub fn drag_register_click_system(

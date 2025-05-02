@@ -11,4 +11,4 @@ pub use title::*;
 pub use camera::*;
 pub use scroll::*;
 pub use animation::ScrollAnimationState;
-pub use animation::icon_scale_animation_system; 
+pub use animation::icon_scale_animation_system;

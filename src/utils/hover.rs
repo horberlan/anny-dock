@@ -148,9 +148,19 @@ pub fn hover_animation_system(
             && hover.index < first_visible_index + config.visible_items;
 
         let mut target_scale = 0.0;
+        let mut z_offset = 0.0;
+
         if in_window {
             let rel_idx = hover.index - first_visible_index;
             target_scale = base_scale * scales[rel_idx];
+
+            z_offset = rel_idx as f32 * 10.0;
+
+            if rel_idx == 0 {
+                z_offset = 0.0 + 10.0 * interp as f32;
+            } else if rel_idx == 1 {
+                z_offset = 10.0 * (1.0 - interp as f32) + 20.0 * interp as f32;
+            }
         }
 
         if hover.is_hovered && in_window {
@@ -169,7 +179,7 @@ pub fn hover_animation_system(
         transform.translation = Vec3::new(
             hover.original_position.x,
             hover.original_position.y + state.current_lift,
-            hover.original_z,
+            hover.original_z - z_offset,
         );
 
         transform.scale = Vec3::splat(state.current_scale);

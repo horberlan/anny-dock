@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use crate::types::*;
-use crate::components::{add_icon_text};
+use crate::components::add_icon_text;
 
 pub fn toggle_titles(
     mut commands: Commands,

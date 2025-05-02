@@ -1,6 +1,8 @@
 pub use loader::*;
 pub mod hover;
 pub mod loader;
+pub mod config;
+
 use bevy::log::{error, info, warn};
 use bevy::math::{Vec2, Vec3};
 use std::fs;
@@ -40,7 +42,7 @@ pub fn launch_application(class: &str) {
                 }
             }
         }
-        None => {
+        _ => {
             warn!("No executable found for class: {}, trying direct launch", class);
             let output = Command::new("hyprctl")
                 .args(["dispatch", "exec", class])
@@ -158,6 +160,7 @@ pub struct DockConfig {
     pub scale_factor: f32,
     pub scroll_speed: f32,
     pub visible_items: usize,
+    pub tilt_y: f32,
 }
 
 impl Default for DockConfig {
@@ -171,6 +174,7 @@ impl Default for DockConfig {
             scale_factor: 0.9,
             scroll_speed: 15.0,
             visible_items: 8,
+            tilt_y: 0.25,
         }
     }
 }

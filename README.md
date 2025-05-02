@@ -28,7 +28,7 @@ Currently exclusive to Hyprland, with plans to support other window managers in 
 
 ### Smooth Animations
 - 🎯 Intelligent hover effects with smooth transitions
-- 🔄 Natural diagonal scrolling behavior
+- 🔄 Natural **diagonal scrolling behavior** (now with configurable inclination)
 - ✨ Frame-rate independent animations
 - 🎨 Subtle scale transformations
 
@@ -100,8 +100,15 @@ pub struct DockConfig {
     pub scale_factor: f32,    // Scale factor for animations
     pub scroll_speed: f32,    // Scroll sensitivity
     pub visible_items: usize, // Number of visible icons
+    pub tilt_y: f32,          // Inclination factor (0.0 = horizontal, 0.5 = strong diagonal)
 }
 ```
+
+#### Dock Inclination (`tilt_y`)
+
+- The `tilt_y` field controls the inclination of the dock towards the center of the screen.
+- Example: `tilt_y: 0.25` makes the dock point to a spot 25% of the screen height above the center.
+- Adjust this value to customize the dock's angle to your visual preference.
 
 ## Architecture
 
@@ -110,7 +117,7 @@ anny-dock is built using a modern ECS architecture with Bevy:
 ### Core Systems
 - Animation System
 - Hover System
-- Scroll System
+- Scroll System (**diagonal, inclination configurable**)
 - Icon Management
 - Hyprland Integration
 - Event Handling
@@ -131,8 +138,8 @@ anny-dock is built using a modern ECS architecture with Bevy:
 
 ### Planned
 - [ ] Support for other window managers
+- [ ] Migrate to hyprland layer
 - [ ] Custom themes
-- [ ] Plugin system
 - [ ] Configuration file
 - [ ] Multi-monitor support
 
