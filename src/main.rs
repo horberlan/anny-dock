@@ -19,11 +19,10 @@ use utils::{
     DockConfig,
 };
 use utils::IconAnimationState;
-use serde_json::Value;
 use std::collections::HashSet;
-use std::process::{Stdio};
+
 use std::io::{BufRead, BufReader};
-use std::sync::{Arc, Mutex, mpsc::{channel, Sender, Receiver}};
+use std::sync::{Arc, Mutex, mpsc::channel};
 use std::env;
 use std::os::unix::net::UnixStream;
 
