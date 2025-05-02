@@ -40,7 +40,7 @@ pub fn reorder_icons_system(
     let start_x = -window.width() / 2.0 + config.margin_x;
     let start_y = -window.height() / 2.0 + config.margin_y;
     let start_pos = Vec2::new(start_x, start_y);
-    let center = Vec2::ZERO;
+    let center = Vec2::new(0.0, window.height() * config.tilt_y);
     let direction = (center - start_pos).normalize_or_zero();
 
     for (index, address) in dock_order.0.iter().enumerate() {

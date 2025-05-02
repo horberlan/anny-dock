@@ -25,7 +25,7 @@ pub fn scroll_system(
     let start_x = -window_width / 2.0 + config.margin_x;
     let start_y = -window_height / 2.0 + config.margin_y;
     let start_pos = Vec2::new(start_x, start_y);
-    let center = Vec2::new(0.0, 0.0);
+    let center = Vec2::new(0.0, window_height * config.tilt_y);
     let direction = (center - start_pos).normalize_or_zero();
 
     for event in scroll_events.iter() {
