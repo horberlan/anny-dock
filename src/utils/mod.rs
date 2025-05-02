@@ -40,7 +40,7 @@ pub fn launch_application(class: &str) {
                 }
             }
         }
-        None => {
+        _ => {
             warn!("No executable found for class: {}, trying direct launch", class);
             let output = Command::new("hyprctl")
                 .args(["dispatch", "exec", class])

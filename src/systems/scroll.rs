@@ -18,16 +18,24 @@ pub fn scroll_system(
         return;
     }
 
+    let window = windows.single();
+    let window_width = window.width();
+    let window_height = window.height();
+
+    let start_x = -window_width / 2.0 + config.margin_x;
+    let start_y = -window_height / 2.0 + config.margin_y;
+    let start_pos = Vec2::new(start_x, start_y);
+    let center = Vec2::new(0.0, 0.0);
+    let direction = (center - start_pos).normalize_or_zero();
+
     for event in scroll_events.iter() {
-        let scroll_direction = Vec2::new(1.0, 0.3).normalize();
-        
+        let scroll_direction = direction;
         let scroll_amount = event.y * config.scroll_speed;
-        
         scroll_state.total_scroll_distance -= scroll_amount;
-        
+
         let max_scroll = ((total_items as f32 - config.visible_items as f32).max(0.0)) * config.spacing;
         scroll_state.total_scroll_distance = scroll_state.total_scroll_distance.clamp(0.0, max_scroll);
-        
+
         scroll_state.offset = scroll_direction * scroll_state.total_scroll_distance;
     }
 } 
