@@ -10,12 +10,12 @@ use std::process::Command;
 use xdgkit::icon_finder;
 
 use crate::components::Favorites;
-use crate::{Client, FALLBACK_ICON_PATH};
+use crate::Client;
+
+static FALLBACK_ICON_SVG: &[u8] = include_bytes!("../../assets/icons/dock_icon.svg");
 
 pub fn get_current_clients() -> Result<Vec<Client>, std::io::Error> {
-    let output = Command::new("hyprctl")
-        .args(["clients", "-j"])
-        .output()?;
+    let output = Command::new("hyprctl").args(["clients", "-j"]).output()?;
 
     if !output.status.success() {
         return Err(std::io::Error::new(
@@ -47,15 +47,20 @@ pub fn get_icon_path(class: &str) -> String {
     let lowercase = class.to_lowercase();
     match icon_finder::find_icon(lowercase, 56, 1) {
         Some(path) => {
-            info!("icon found for {}: {}", class, path.to_string_lossy().to_string());
+            info!(
+                "icon found for {}: {}",
+                class,
+                path.to_string_lossy().to_string()
+            );
             path.to_string_lossy().to_string()
         }
         _ => {
             warn!("No icons found for {}, using fallback", class);
-            FALLBACK_ICON_PATH.to_string()
+            "memory://fallback_icon".to_string()
         }
     }
 }
+
 pub fn load_icon(path: &Path) -> Option<Image> {
     if let Some(ext) = path.extension() {
         if ext == "svg" {
