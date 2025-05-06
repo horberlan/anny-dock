@@ -42,11 +42,12 @@ pub fn save_favorites(favorites: &Favorites) {
         let _ = std::fs::write("favorites.json", json);
     }
 }
+
 pub fn get_icon_path(class: &str) -> String {
     let lowercase = class.to_lowercase();
     match icon_finder::find_icon(lowercase, 56, 1) {
         Some(path) => {
-            info!("icon found for {},", path.to_string_lossy().to_string());
+            info!("icon found for {}: {}", class, path.to_string_lossy().to_string());
             path.to_string_lossy().to_string()
         }
         _ => {
@@ -55,7 +56,6 @@ pub fn get_icon_path(class: &str) -> String {
         }
     }
 }
-
 pub fn load_icon(path: &Path) -> Option<Image> {
     if let Some(ext) = path.extension() {
         if ext == "svg" {
