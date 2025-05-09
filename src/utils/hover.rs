@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use crate::{Dragging, HoverTarget, MainCamera, UiState, ICON_SIZE, ScrollState, DockConfig};
 
-const HOVER_LIFT: f32 = 35.0;
+const HOVER_LIFT: f32 = 15.0;
 const HOVER_SCALE: f32 = 1.15;
 const ANIMATION_SMOOTHNESS: f32 = 0.85;
 

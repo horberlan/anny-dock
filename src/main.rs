@@ -3,35 +3,38 @@ mod systems;
 mod types;
 mod utils;
 
+use bevy::app::AppExit;
+use bevy::input::keyboard::KeyboardInput;
+use bevy::input::ButtonState;
 use bevy::prelude::*;
 use bevy::render::texture::{Image, ImageSampler};
 use bevy::window::{PrimaryWindow, Window, WindowPlugin};
+use bevy_embedded_assets::EmbeddedAssetPlugin;
 use bevy_svg::SvgPlugin;
 
 use components::{
     add_client_address, add_favorite, add_icon_text, spawn_icon_entity, Favorite, Favorites,
 };
+use std::collections::HashSet;
 use std::process::Command;
 use types::*;
 use utils::hover::{hover_animation_system, hover_system};
+use utils::IconAnimationState;
 use utils::{
     calculate_icon_transform, launch_application, load_clients, load_favorites, save_favorites,
     DockConfig,
 };
-use utils::IconAnimationState;
-use std::collections::HashSet;
 
-use std::io::{BufRead, BufReader};
-use std::sync::{Arc, Mutex, mpsc::channel};
 use std::env;
+use std::io::{BufRead, BufReader};
 use std::os::unix::net::UnixStream;
+use std::sync::{mpsc::channel, Arc, Mutex};
 
 use crate::systems::*;
 use systems::animation::ScrollAnimationState;
 
-static FONT_PATH: &str = "/usr/share/fonts/VictorMono/VictorMonoNerdFont-Medium.ttf";
-static FALLBACK_ICON_PATH: &str = "assets/dock_icon.svg";
-static ASSETS_ICON_PIN_PATH: &str = "pin_stroke_rounded.svg";
+static FONT_PATH: &str = "fonts/VictorMonoNerdFontMono-Regular.ttf";
+static ASSETS_ICON_PIN_PATH: &str = "icons/pin_stroke_rounded.svg";
 
 fn main() {
     let client_list = load_clients();
@@ -39,6 +42,7 @@ fn main() {
 
     App::new()
         .insert_resource(Msaa::Sample4)
+        .add_plugins(EmbeddedAssetPlugin::default())
         .add_plugins(
             DefaultPlugins
                 .set(WindowPlugin {
@@ -71,24 +75,29 @@ fn main() {
         .add_systems(Startup, setup)
         .add_systems(Startup, setup_hyprland_monitor)
         .add_systems(Update, cleanup_duplicate_cameras)
-        .add_systems(Update, (
-            scroll_system,
-            hover_system,
-            hover_animation_system,
-            icon_scale_animation_system,
-            collect_icon_data.before(update_text_positions),
-            update_text_positions,
-            icon_click_system,
-            toggle_favorite_system.in_set(StateUpdate),
-            toggle_titles,
-            drag_register_click_system,
-            drag_check_system,
-            drag_update_system,
-            drag_end_system.in_set(StateUpdate),
-            reset_positions_system,
-            reorder_icons_system.in_set(ReorderIcons),
-            process_hyprland_events,
-        ).chain())
+        .add_systems(
+            Update,
+            (
+                scroll_system,
+                hover_system,
+                hover_animation_system,
+                icon_scale_animation_system,
+                collect_icon_data.before(update_text_positions),
+                update_text_positions,
+                icon_click_system,
+                toggle_favorite_system.in_set(StateUpdate),
+                toggle_titles,
+                drag_register_click_system,
+                drag_check_system,
+                drag_update_system,
+                drag_end_system.in_set(StateUpdate),
+                reset_positions_system,
+                reorder_icons_system.in_set(ReorderIcons),
+                process_hyprland_events,
+                exit_on_esc_or_q,
+            )
+                .chain(),
+        )
         .run();
 }
 
@@ -149,13 +158,8 @@ fn setup(
     commands.insert_resource(DockOrder(initial_order));
 
     for (index, (class, client_opt, is_favorite)) in all_apps.iter().enumerate() {
-        let (translation, scale) = calculate_icon_transform(
-            index,
-            start_pos,
-            direction,
-            &config,
-            Vec2::ZERO
-        );
+        let (translation, scale) =
+            calculate_icon_transform(index, start_pos, direction, &config, Vec2::ZERO);
         let transform = Transform {
             translation,
             scale: Vec3::splat(scale),
@@ -223,7 +227,11 @@ fn setup(
 }
 
 fn update_sprite_alpha(sprite: &mut Sprite, has_favorite: bool, has_address: bool) {
-    let alpha = if has_favorite && !has_address { 0.2 } else { 1.0 };
+    let alpha = if has_favorite && !has_address {
+        0.2
+    } else {
+        1.0
+    };
     sprite.color = Color::rgba(1.0, 1.0, 1.0, alpha);
 }
 
@@ -307,12 +315,15 @@ fn toggle_favorite(
         commands.entity(entity).remove::<Favorite>();
         commands.entity(entity).despawn_descendants();
 
-        let address = q_address.map(|a| a.0.clone()).unwrap_or_else(|| format!("pinned:{}", app_class));
+        let address = q_address
+            .map(|a| a.0.clone())
+            .unwrap_or_else(|| format!("pinned:{}", app_class));
         if address.starts_with("pinned:") {
             commands.entity(entity).despawn();
             icon_removed_writer.send(IconRemovedEvent(address.clone()));
-            
-            let new_order: Vec<String> = dock_order.0
+
+            let new_order: Vec<String> = dock_order
+                .0
                 .iter()
                 .filter(|addr| addr != &&address)
                 .cloned()
@@ -334,7 +345,10 @@ fn toggle_favorite(
         update_sprite_alpha(
             sprite,
             !is_favorite,
-            q_address.is_some() && q_address.map(|a| !a.0.starts_with("pinned:")).unwrap_or(false),
+            q_address.is_some()
+                && q_address
+                    .map(|a| !a.0.starts_with("pinned:"))
+                    .unwrap_or(false),
         );
     }
 
@@ -415,18 +429,32 @@ fn update_client_list_system(
     config: Res<DockConfig>,
     favorites: Res<Favorites>,
     show_titles: Res<ShowTitles>,
-    mut q_entities: Query<(Entity, Option<&ClientAddress>, Option<&ClientClass>, Option<&mut Sprite>)>,
+    mut q_entities: Query<(
+        Entity,
+        Option<&ClientAddress>,
+        Option<&ClientClass>,
+        Option<&mut Sprite>,
+    )>,
     mut images: ResMut<Assets<Image>>,
     mut dock_order: ResMut<DockOrder>,
     mut reorder_trigger: ResMut<ReorderTrigger>,
 ) {
     match crate::utils::loader::get_current_clients() {
         Ok(current_windows) => {
-            let current_addresses: HashSet<String> = current_windows.iter().map(|c| c.address.clone()).collect();
-            let old_addresses: HashSet<String> = client_list.0.iter().map(|c| c.address.clone()).collect();
+            let current_addresses: HashSet<String> =
+                current_windows.iter().map(|c| c.address.clone()).collect();
+            let old_addresses: HashSet<String> =
+                client_list.0.iter().map(|c| c.address.clone()).collect();
 
-            let new_windows: Vec<Client> = current_windows.iter().filter(|c| !old_addresses.contains(&c.address)).cloned().collect();
-            let closed_windows: Vec<String> = old_addresses.difference(&current_addresses).cloned().collect();
+            let new_windows: Vec<Client> = current_windows
+                .iter()
+                .filter(|c| !old_addresses.contains(&c.address))
+                .cloned()
+                .collect();
+            let closed_windows: Vec<String> = old_addresses
+                .difference(&current_addresses)
+                .cloned()
+                .collect();
 
             if !new_windows.is_empty() || !closed_windows.is_empty() {
                 client_list.0 = current_windows.clone();
@@ -463,15 +491,31 @@ fn update_client_list_system(
 fn process_closed_windows(
     closed_windows: &[String],
     favorites: &Favorites,
-    q_entities: &mut Query<(Entity, Option<&ClientAddress>, Option<&ClientClass>, Option<&mut Sprite>)>,
+    q_entities: &mut Query<(
+        Entity,
+        Option<&ClientAddress>,
+        Option<&ClientClass>,
+        Option<&mut Sprite>,
+    )>,
     dock_order: &mut DockOrder,
     commands: &mut Commands,
 ) {
     for address in closed_windows {
-        if let Some((entity, addr_opt, class_opt, Some(mut sprite))) = q_entities.iter_mut().find(|(_, addr, _, sprite)| addr.as_ref().map(|a| a.0 == *address).unwrap_or(false) && sprite.is_some()) {
+        if let Some((entity, addr_opt, class_opt, Some(mut sprite))) =
+            q_entities.iter_mut().find(|(_, addr, _, sprite)| {
+                addr.as_ref().map(|a| a.0 == *address).unwrap_or(false) && sprite.is_some()
+            })
+        {
             if let (Some(_addr), Some(class)) = (addr_opt, class_opt) {
                 if favorites.0.contains(&class.0) {
-                    handle_close_pinned_window(entity, address, &class.0, &mut sprite, dock_order, commands);
+                    handle_close_pinned_window(
+                        entity,
+                        address,
+                        &class.0,
+                        &mut sprite,
+                        dock_order,
+                        commands,
+                    );
                 } else {
                     commands.entity(entity).despawn();
                     dock_order.0.retain(|a| a != address);
@@ -483,7 +527,12 @@ fn process_closed_windows(
 
 fn process_new_windows(
     new_windows: &[Client],
-    q_entities: &mut Query<(Entity, Option<&ClientAddress>, Option<&ClientClass>, Option<&mut Sprite>)>,
+    q_entities: &mut Query<(
+        Entity,
+        Option<&ClientAddress>,
+        Option<&ClientClass>,
+        Option<&mut Sprite>,
+    )>,
     commands: &mut Commands,
     images: &mut ResMut<Assets<Image>>,
     asset_server: &Res<AssetServer>,
@@ -502,25 +551,26 @@ fn process_new_windows(
     let direction = (center - start_pos).normalize_or_zero();
 
     for (index, client) in new_windows.iter().enumerate() {
-        if let Some((entity, Some(_client_address), Some(client_class), Some(mut sprite))) = q_entities.iter_mut().find(|(_, addr, class, sprite)| {
-            addr.as_ref().map(|a| a.0.starts_with("pinned:")).unwrap_or(false)
-                && class.as_ref().map(|c| c.0 == client.class).unwrap_or(false)
-                && sprite.is_some()
-        }) {
-            commands.entity(entity).insert(ClientAddress(client.address.clone()));
+        if let Some((entity, Some(_client_address), Some(client_class), Some(mut sprite))) =
+            q_entities.iter_mut().find(|(_, addr, class, sprite)| {
+                addr.as_ref()
+                    .map(|a| a.0.starts_with("pinned:"))
+                    .unwrap_or(false)
+                    && class.as_ref().map(|c| c.0 == client.class).unwrap_or(false)
+                    && sprite.is_some()
+            })
+        {
+            commands
+                .entity(entity)
+                .insert(ClientAddress(client.address.clone()));
             handle_open_pinned_window(entity, client, &mut sprite, dock_order);
             client_list.0.push(client.clone());
             reorder_trigger.0 = true;
             continue;
         }
 
-        let (translation, scale) = calculate_icon_transform(
-            index,
-            start_pos,
-            direction,
-            config,
-            Vec2::ZERO
-        );
+        let (translation, scale) =
+            calculate_icon_transform(index, start_pos, direction, config, Vec2::ZERO);
         let transform = Transform {
             translation,
             scale: Vec3::splat(scale),
@@ -548,8 +598,12 @@ fn process_new_windows(
         });
 
         add_client_address(commands, icon_entity, client.address.clone());
-        commands.entity(icon_entity).insert(ClientAddress(client.address.clone()));
-        commands.entity(icon_entity).insert(ClientClass(client.class.clone()));
+        commands
+            .entity(icon_entity)
+            .insert(ClientAddress(client.address.clone()));
+        commands
+            .entity(icon_entity)
+            .insert(ClientClass(client.class.clone()));
 
         if show_titles.0 {
             add_icon_text(
@@ -577,7 +631,10 @@ fn setup_hyprland_monitor(mut commands: Commands) {
             Ok(val) => val,
             Err(_) => return,
         };
-        let socket_path = format!("{}/hypr/{}/.socket2.sock", xdg_runtime_dir, hyprland_instance_signature);
+        let socket_path = format!(
+            "{}/hypr/{}/.socket2.sock",
+            xdg_runtime_dir, hyprland_instance_signature
+        );
         let stream = match UnixStream::connect(socket_path) {
             Ok(s) => s,
             Err(_) => return,
@@ -620,13 +677,23 @@ fn process_hyprland_events(
     config: Res<DockConfig>,
     favorites: Res<Favorites>,
     show_titles: Res<ShowTitles>,
-    mut q_entities: Query<(Entity, Option<&ClientAddress>, Option<&ClientClass>, Option<&mut Sprite>)>,
+    mut q_entities: Query<(
+        Entity,
+        Option<&ClientAddress>,
+        Option<&ClientClass>,
+        Option<&mut Sprite>,
+    )>,
     mut images: ResMut<Assets<Image>>,
 ) {
     let event_receiver = event_receiver.0.lock().unwrap();
     while let Ok(event) = event_receiver.try_recv() {
         match event {
-            HyprIpcEvent::OpenWindow { address, workspace, class, title } => {
+            HyprIpcEvent::OpenWindow {
+                address,
+                workspace,
+                class,
+                title,
+            } => {
                 handle_hypr_open_window(
                     &mut commands,
                     &mut client_list,
@@ -670,7 +737,12 @@ fn handle_hypr_open_window(
     config: &Res<DockConfig>,
     favorites: &Res<Favorites>,
     show_titles: &Res<ShowTitles>,
-    q_entities: &mut Query<(Entity, Option<&ClientAddress>, Option<&ClientClass>, Option<&mut Sprite>)>,
+    q_entities: &mut Query<(
+        Entity,
+        Option<&ClientAddress>,
+        Option<&ClientClass>,
+        Option<&mut Sprite>,
+    )>,
     images: &mut ResMut<Assets<Image>>,
     address: String,
     class: String,
@@ -681,12 +753,18 @@ fn handle_hypr_open_window(
         class: class.clone(),
         name: Some(title.clone()),
     };
-    if let Some((entity, Some(_client_address), Some(client_class), Some(mut sprite))) = q_entities.iter_mut().find(|(_, addr, class, sprite)| {
-        addr.as_ref().map(|a| a.0.starts_with("pinned:")).unwrap_or(false)
-            && class.as_ref().map(|c| c.0 == client.class).unwrap_or(false)
-            && sprite.is_some()
-    }) {
-        commands.entity(entity).insert(ClientAddress(client.address.clone()));
+    if let Some((entity, Some(_client_address), Some(client_class), Some(mut sprite))) =
+        q_entities.iter_mut().find(|(_, addr, class, sprite)| {
+            addr.as_ref()
+                .map(|a| a.0.starts_with("pinned:"))
+                .unwrap_or(false)
+                && class.as_ref().map(|c| c.0 == client.class).unwrap_or(false)
+                && sprite.is_some()
+        })
+    {
+        commands
+            .entity(entity)
+            .insert(ClientAddress(client.address.clone()));
         handle_open_pinned_window(entity, &client, &mut sprite, dock_order);
         client_list.0.push(client.clone());
         reorder_trigger.0 = true;
@@ -703,13 +781,8 @@ fn handle_hypr_open_window(
     let center = Vec2::new(0.0, window.height() * config.tilt_y);
     let direction = (center - start_pos).normalize_or_zero();
 
-    let (translation, scale) = calculate_icon_transform(
-        0,
-        start_pos,
-        direction,
-        &config,
-        Vec2::ZERO
-    );
+    let (translation, scale) =
+        calculate_icon_transform(0, start_pos, direction, &config, Vec2::ZERO);
     let transform = Transform {
         translation,
         scale: Vec3::splat(scale),
@@ -737,8 +810,12 @@ fn handle_hypr_open_window(
     });
 
     add_client_address(commands, icon_entity, client.address.clone());
-    commands.entity(icon_entity).insert(ClientAddress(client.address.clone()));
-    commands.entity(icon_entity).insert(ClientClass(client.class.clone()));
+    commands
+        .entity(icon_entity)
+        .insert(ClientAddress(client.address.clone()));
+    commands
+        .entity(icon_entity)
+        .insert(ClientClass(client.class.clone()));
 
     if show_titles.0 {
         add_icon_text(
@@ -758,13 +835,29 @@ fn handle_hypr_close_window(
     dock_order: &mut ResMut<DockOrder>,
     reorder_trigger: &mut ResMut<ReorderTrigger>,
     favorites: &Res<Favorites>,
-    q_entities: &mut Query<(Entity, Option<&ClientAddress>, Option<&ClientClass>, Option<&mut Sprite>)>,
+    q_entities: &mut Query<(
+        Entity,
+        Option<&ClientAddress>,
+        Option<&ClientClass>,
+        Option<&mut Sprite>,
+    )>,
     address: String,
 ) {
-    if let Some((entity, addr_opt, class_opt, Some(mut sprite))) = q_entities.iter_mut().find(|(_, addr, _, sprite)| addr.as_ref().map(|a| a.0 == address).unwrap_or(false) && sprite.is_some()) {
+    if let Some((entity, addr_opt, class_opt, Some(mut sprite))) =
+        q_entities.iter_mut().find(|(_, addr, _, sprite)| {
+            addr.as_ref().map(|a| a.0 == address).unwrap_or(false) && sprite.is_some()
+        })
+    {
         if let (Some(addr), Some(class)) = (addr_opt, class_opt) {
             if favorites.0.contains(&class.0) {
-                handle_close_pinned_window(entity, &address, &class.0, &mut sprite, dock_order, commands);
+                handle_close_pinned_window(
+                    entity,
+                    &address,
+                    &class.0,
+                    &mut sprite,
+                    dock_order,
+                    commands,
+                );
             } else {
                 commands.entity(entity).despawn();
                 dock_order.0.retain(|a| a != &address);
@@ -798,10 +891,25 @@ fn handle_close_pinned_window(
     commands: &mut Commands,
 ) {
     let pinned_addr = format!("pinned:{}", class);
-    commands.entity(entity).insert(ClientAddress(pinned_addr.clone()));
+    commands
+        .entity(entity)
+        .insert(ClientAddress(pinned_addr.clone()));
     update_sprite_alpha(sprite, true, false);
 
     if let Some(index) = dock_order.0.iter().position(|a| a == address) {
         dock_order.0[index] = pinned_addr;
+    }
+}
+
+fn exit_on_esc_or_q(
+    mut keys: EventReader<KeyboardInput>,
+    mut exit: EventWriter<AppExit>,
+) {
+    for key_event in keys.iter() {
+        if let Some(key_code) = key_event.key_code {
+            if key_event.state == ButtonState::Pressed && (key_code == KeyCode::Escape || key_code == KeyCode::Q) {
+                exit.send(AppExit);
+            }
+        }
     }
 }
