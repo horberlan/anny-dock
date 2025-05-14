@@ -49,19 +49,25 @@ pub(crate) fn add_icon_text(
     scale: f32,
     asset_server: &AssetServer,
 ) {
+    const TEXT_OFFSET: f32 = 8.0;
+
     commands
         .spawn(Text2dBundle {
             text: Text::from_section(
                 class.to_string(),
                 TextStyle {
                     font: asset_server.load(FONT_PATH),
-                    font_size: 12.0 * scale,
+                    font_size: 8.0 * scale,
                     color: Color::WHITE,
                 },
             )
             .with_alignment(TextAlignment::Center),
             transform: Transform {
-                translation: transform.translation - Vec3::new(0.0, 30.0 * scale, 0.01),
+                translation: Vec3::new(
+                    transform.translation.x,
+                    transform.translation.y - (ICON_SIZE * scale / 2.0) - TEXT_OFFSET,
+                    transform.translation.z - 0.01,
+                ),
                 scale: Vec3::splat(scale),
                 ..default()
             },

@@ -1,5 +1,5 @@
 <div align="center">
-<img src="assets/dock_icon.svg" alt="anny-dock Logo" width="120" height="120"/>
+<img src="assets/icons/dock_icon.svg" alt="anny-dock Logo" width="120" height="120"/>
 
 # anny-dock
 

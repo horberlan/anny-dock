@@ -14,13 +14,13 @@ pub fn toggle_titles(
         show_titles.0 = !show_titles.0;
 
         if show_titles.0 {
-            for (entity, transform, class, hover) in q_icons.iter() {
+            for (entity, transform, class, _hover) in q_icons.iter() {
                 add_icon_text(
                     &mut commands,
                     entity,
                     &class.0,
                     *transform,
-                    hover.original_scale,
+                    transform.scale.y,
                     &asset_server,
                 );
             }
@@ -30,4 +30,4 @@ pub fn toggle_titles(
             }
         }
     }
-} 
+}

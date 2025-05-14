@@ -23,7 +23,7 @@ static FALLBACK_ICON_SVG: &[u8] = include_bytes!("../../assets/icons/dock_icon.s
 
 fn load_svg_from_bytes(svg_bytes: &[u8], target_size: u32) -> Option<Image> {
     use resvg::render;
-    use tiny_skia::{Pixmap, Transform};
+    use tiny_skia::Pixmap;
     use usvg::{Options, Tree};
 
     let opts = Options::default();
@@ -50,17 +50,25 @@ fn load_svg_from_bytes(svg_bytes: &[u8], target_size: u32) -> Option<Image> {
 
     let mut pixmap = match Pixmap::new(final_width, final_height) {
         Some(p) => p,
-        None => {
+        _ => {
             error!("Failed to create pixmap");
             return None;
         }
     };
 
-    let transform = Transform::from_scale(scale_factor, scale_factor);
+    if render(
+        &tree,
+        usvg::FitTo::Size(final_width, final_height),
+        tiny_skia::Transform::default(),
+        pixmap.as_mut(),
+    )
+    .is_none()
+    {
+        error!("Failed to render SVG to pixmap");
+        return None;
+    }
 
-    render(&tree, usvg::FitTo::Original, transform, pixmap.as_mut());
-
-    let rgba = pixmap.take();
+    let rgba = pixmap.data().to_vec();
     let image = Image::new(
         Extent3d {
             width: final_width,
