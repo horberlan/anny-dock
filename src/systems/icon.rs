@@ -1,7 +1,8 @@
-use bevy::prelude::*;
-use bevy::window::PrimaryWindow;
 use crate::types::*;
 use crate::utils::{calculate_icon_transform, DockConfig};
+use crate::{IconText, ICON_SIZE};
+use bevy::prelude::*;
+use bevy::window::PrimaryWindow;
 
 pub fn collect_icon_data(
     query: Query<(Entity, &Transform, &HoverTarget)>,
@@ -16,14 +17,17 @@ pub fn collect_icon_data(
 }
 
 pub fn update_text_positions(
+    icon_query: Query<(&Transform, &ClientClass), Without<IconText>>,
     mut text_query: Query<(&mut Transform, &IconText)>,
-    icon_positions: Res<IconPositions>,
 ) {
     for (mut text_transform, icon_text) in text_query.iter_mut() {
-        if let Some((position, scale)) = icon_positions.0.get(&icon_text.0) {
-            text_transform.translation =
-                Vec3::new(position.x, position.y - 30.0, position.z - 0.01);
-            text_transform.scale = *scale;
+        if let Ok((icon_transform, _)) = icon_query.get(icon_text.0) {
+            let scale = icon_transform.scale.y;
+            text_transform.translation.x = icon_transform.translation.x;
+            text_transform.translation.y =
+                icon_transform.translation.y - (ICON_SIZE * scale / 2.0) - 2.0;
+            text_transform.translation.z = icon_transform.translation.z - 0.01;
+            text_transform.scale = Vec3::splat(scale);
         }
     }
 }
@@ -44,25 +48,20 @@ pub fn reorder_icons_system(
     let direction = (center - start_pos).normalize_or_zero();
 
     for (index, address) in dock_order.0.iter().enumerate() {
-        let (translation, scale) = calculate_icon_transform(
-            index,
-            start_pos,
-            direction,
-            &config,
-            scroll_state.offset
-        );
-        
+        let (translation, scale) =
+            calculate_icon_transform(index, start_pos, direction, &config, scroll_state.offset);
+
         for (_entity, icon_address, mut transform, mut hover) in q_icons.iter_mut() {
             if icon_address.0 == *address {
                 let current_pos = transform.translation;
                 let target_pos = translation;
-                
+
                 transform.translation = Vec3::new(
                     lerp(current_pos.x, target_pos.x, 0.2),
                     lerp(current_pos.y, target_pos.y, 0.2),
-                    target_pos.z
+                    target_pos.z,
                 );
-                
+
                 hover.original_position = translation.truncate();
                 hover.original_z = translation.z;
                 hover.original_scale = scale;
@@ -77,4 +76,4 @@ pub fn reorder_icons_system(
 
 fn lerp(start: f32, end: f32, t: f32) -> f32 {
     start + (end - start) * t
-} 
+}
