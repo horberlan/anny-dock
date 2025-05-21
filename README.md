@@ -86,7 +86,7 @@ cargo run --release
 - **Right Click**: Pin/Unpin application
 - **T**: Toggle application titles
 - **Q/Esc**: Close application
-- **1..8**: Launch/Focus visible application
+- **1..8**: Launch/Focus visible applications
 - **Drag & Drop**: Reorder icons
 
 ### Configuration
