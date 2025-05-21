@@ -902,13 +902,12 @@ fn handle_close_pinned_window(
     }
 }
 
-fn exit_on_esc_or_q(
-    mut keys: EventReader<KeyboardInput>,
-    mut exit: EventWriter<AppExit>,
-) {
+fn exit_on_esc_or_q(mut keys: EventReader<KeyboardInput>, mut exit: EventWriter<AppExit>) {
     for key_event in keys.iter() {
         if let Some(key_code) = key_event.key_code {
-            if key_event.state == ButtonState::Pressed && (key_code == KeyCode::Escape || key_code == KeyCode::Q) {
+            if key_event.state == ButtonState::Pressed
+                && (key_code == KeyCode::Escape || key_code == KeyCode::Q)
+            {
                 exit.send(AppExit);
             }
         }
@@ -916,30 +915,28 @@ fn exit_on_esc_or_q(
 }
 
 fn keybind_launch_visible_icons_system(
-    keyboard_input: Res<Input<KeyCode>>,
-    q_icons: Query<(&ClientClass, &HoverTarget, Option<&ClientAddress>)>,
+    keyboard: Res<Input<KeyCode>>,
+    icons: Query<(&ClientClass, &HoverTarget, Option<&ClientAddress>)>,
 ) {
-    for i in 0..8 {
-        let key = match i {
-            0 => KeyCode::Key1,
-            1 => KeyCode::Key2,
-            2 => KeyCode::Key3,
-            3 => KeyCode::Key4,
-            4 => KeyCode::Key5,
-            5 => KeyCode::Key6,
-            6 => KeyCode::Key7,
-            7 => KeyCode::Key8,
-            _ => continue,
-        };
-        if keyboard_input.just_pressed(key) {
-            if let Some((class, _hover, address_opt)) =
-                q_icons.iter().find(|(_, hover, _)| hover.index == i)
-            {
-                if let Some(address) = address_opt {
-                    if address.0.starts_with("pinned:") {
+    let keycodes = [
+        KeyCode::Key1,
+        KeyCode::Key2,
+        KeyCode::Key3,
+        KeyCode::Key4,
+        KeyCode::Key5,
+        KeyCode::Key6,
+        KeyCode::Key7,
+        KeyCode::Key8,
+    ];
+
+    for (i, &key) in keycodes.iter().enumerate().take(8) {
+        if keyboard.just_pressed(key) {
+            if let Some((class, _, address)) = icons.iter().find(|(_, hover, _)| hover.index == i) {
+                if let Some(addr) = address {
+                    if addr.0.starts_with("pinned:") {
                         launch_application(&class.0);
                     } else {
-                        focus_client(&address.0);
+                        focus_client(&addr.0);
                     }
                 } else {
                     launch_application(&class.0);
