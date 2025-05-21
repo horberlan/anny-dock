@@ -1,6 +1,6 @@
 [package]
 name = "anny-dock"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
 description = "A modern, animated dock for Hyprland built with Rust and Bevy Engine"
 readme = "README.md"
@@ -9,6 +9,12 @@ license = "MIT"
 license-file = "LICENSE"
 keywords = ["dock", "bevy", "hyprland", "animated"]
 authors = ["pois.nada"]
+
+[package.metadata.bundle]
+resources = ["assets/"]
+
+[package.metadata.assets]
+paths = ["assets/"]
 
 [dependencies]
 bevy = "0.11"
