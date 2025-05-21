@@ -80,10 +80,13 @@ cargo run --release
 ## Usage
 
 ### Basic Controls
+
 - **Scroll**: Navigate through icons
 - **Left Click**: Launch/Focus application
 - **Right Click**: Pin/Unpin application
 - **T**: Toggle application titles
+- **Q/Esc**: Close application
+- **1..8**: Launch/Focus visible applications
 - **Drag & Drop**: Reorder icons
 
 ### Configuration

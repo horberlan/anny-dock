@@ -8,12 +8,7 @@ repository = "https://github.com/horberlan/anny-dock"
 license = "MIT"
 license-file = "LICENSE"
 keywords = ["dock", "bevy", "hyprland", "animated"]
-
-[package.metadata.bundle]
-resources = ["assets/"]
-
-[package.metadata.assets]
-paths = ["assets/"]
+authors = ["pois.nada"]
 
 [dependencies]
 bevy = "0.11"
