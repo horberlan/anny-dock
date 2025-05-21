@@ -140,11 +140,12 @@ anny-dock is built using a modern ECS architecture with Bevy:
 - [x] Favorite applications
 
 ### Planned
-- [ ] Support for other window managers
+- [ ] Scroll using keyboard arrows
+- [ ] Configuration file
 - [ ] Migrate to hyprland layer
 - [ ] Custom themes
-- [ ] Configuration file
 - [ ] Multi-monitor support
+- [ ] Support for other window managers
 
 ## Development
 
