@@ -54,7 +54,7 @@ fn main() {
                     ..default()
                 })
                 .set(ImagePlugin {
-                    default_sampler: ImageSampler::linear_descriptor(),
+                    default_sampler: bevy::render::texture::ImageSamplerDescriptor::linear(),
                     ..default()
                 }),
         )
