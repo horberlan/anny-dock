@@ -87,8 +87,8 @@ cargo run --release
 - **T**: Toggle application titles
 - **Q/Esc**: Close application
 - **1..8**: Launch/Focus visible applications
-- **Arrow Keys (←/→)**: Scroll the dock left and right
 - **Drag & Drop**: Reorder icons
+
 ### Configuration
 
 anny-dock can be configured through the `DockConfig` resource:
@@ -138,9 +138,9 @@ anny-dock is built using a modern ECS architecture with Bevy:
 - [x] Basic animation system
 - [x] Icon management
 - [x] Favorite applications
-- [x] Scroll using keyboard arrows
 
 ### Planned
+- [ ] Scroll using keyboard arrows
 - [ ] Configuration file
 - [ ] Migrate to hyprland layer
 - [ ] Custom themes

@@ -1,8 +1,8 @@
+use bevy::prelude::*;
+use bevy::input::mouse::MouseWheel;
+use bevy::window::PrimaryWindow;
 use crate::types::*;
 use crate::utils::DockConfig;
-use bevy::input::mouse::MouseWheel;
-use bevy::prelude::*;
-use bevy::window::PrimaryWindow;
 
 pub fn scroll_system(
     mut scroll_state: ResMut<ScrollState>,
@@ -28,16 +28,14 @@ pub fn scroll_system(
     let center = Vec2::new(0.0, window_height * config.tilt_y);
     let direction = (center - start_pos).normalize_or_zero();
 
-    for event in scroll_events.read() {
+    for event in scroll_events.iter() {
         let scroll_direction = direction;
         let scroll_amount = event.y * config.scroll_speed;
         scroll_state.total_scroll_distance -= scroll_amount;
 
-        let max_scroll =
-            ((total_items as f32 - config.visible_items as f32).max(0.0)) * config.spacing;
-        scroll_state.total_scroll_distance =
-            scroll_state.total_scroll_distance.clamp(0.0, max_scroll);
+        let max_scroll = ((total_items as f32 - config.visible_items as f32).max(0.0)) * config.spacing;
+        scroll_state.total_scroll_distance = scroll_state.total_scroll_distance.clamp(0.0, max_scroll);
 
         scroll_state.offset = scroll_direction * scroll_state.total_scroll_distance;
     }
-}
+} 

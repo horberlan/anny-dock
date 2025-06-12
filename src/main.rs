@@ -3,6 +3,9 @@ mod systems;
 mod types;
 mod utils;
 
+use bevy::app::AppExit;
+use bevy::input::keyboard::KeyboardInput;
+use bevy::input::ButtonState;
 use bevy::prelude::*;
 use bevy::render::texture::{Image, ImageSampler};
 use bevy::window::{PrimaryWindow, Window, WindowPlugin};
@@ -51,7 +54,7 @@ fn main() {
                     ..default()
                 })
                 .set(ImagePlugin {
-                    default_sampler: bevy::render::texture::ImageSamplerDescriptor::linear(),
+                    default_sampler: ImageSampler::linear_descriptor(),
                     ..default()
                 }),
         )
@@ -76,7 +79,6 @@ fn main() {
             Update,
             (
                 scroll_system,
-                scroll_with_arrows,
                 hover_system,
                 hover_animation_system,
                 icon_scale_animation_system,
@@ -93,7 +95,7 @@ fn main() {
                 reorder_icons_system.in_set(ReorderIcons),
                 process_hyprland_events,
                 exit_on_esc_or_q,
-                keybind_launch_visible_icons,
+                keybind_launch_visible_icons_system,
             )
                 .chain(),
         )
@@ -900,3 +902,46 @@ fn handle_close_pinned_window(
     }
 }
 
+fn exit_on_esc_or_q(mut keys: EventReader<KeyboardInput>, mut exit: EventWriter<AppExit>) {
+    for key_event in keys.iter() {
+        if let Some(key_code) = key_event.key_code {
+            if key_event.state == ButtonState::Pressed
+                && (key_code == KeyCode::Escape || key_code == KeyCode::Q)
+            {
+                exit.send(AppExit);
+            }
+        }
+    }
+}
+
+fn keybind_launch_visible_icons_system(
+    keyboard: Res<Input<KeyCode>>,
+    icons: Query<(&ClientClass, &HoverTarget, Option<&ClientAddress>)>,
+) {
+    let keycodes = [
+        KeyCode::Key1,
+        KeyCode::Key2,
+        KeyCode::Key3,
+        KeyCode::Key4,
+        KeyCode::Key5,
+        KeyCode::Key6,
+        KeyCode::Key7,
+        KeyCode::Key8,
+    ];
+
+    for (i, &key) in keycodes.iter().enumerate().take(8) {
+        if keyboard.just_pressed(key) {
+            if let Some((class, _, address)) = icons.iter().find(|(_, hover, _)| hover.index == i) {
+                if let Some(addr) = address {
+                    if addr.0.starts_with("pinned:") {
+                        launch_application(&class.0);
+                    } else {
+                        focus_client(&addr.0);
+                    }
+                } else {
+                    launch_application(&class.0);
+                }
+            }
+        }
+    }
+}

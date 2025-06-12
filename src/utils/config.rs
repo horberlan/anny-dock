@@ -1,5 +1,5 @@
-use bevy::prelude::Resource;
 use serde::Deserialize;
+use bevy::prelude::Resource;
 
 #[derive(Resource)]
 pub struct DockConfig {
