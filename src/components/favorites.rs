@@ -26,7 +26,7 @@ pub struct Favorites(pub Vec<String>);
 #[derive(Component, Debug)]
 pub struct Favorite;
 
-use crate::{ClientAddress, IconText, ASSETS_ICON_PIN_PATH, FONT_PATH, ICON_SIZE};
+use crate::{ClientAddress, IconText, ASSETS_ICON_PIN_PATH, ICON_SIZE};
 
 pub(crate) fn add_client_address(commands: &mut Commands, entity: Entity, address: String) {
     commands.entity(entity).insert(ClientAddress(address));
@@ -56,7 +56,8 @@ pub(crate) fn add_icon_text(
             text: Text::from_section(
                 class.to_string(),
                 TextStyle {
-                    font: asset_server.load(FONT_PATH),
+                    // font: asset_server.load(FONT_PATH),
+                    font: TextStyle::default().font,
                     font_size: 8.0 * scale,
                     color: Color::WHITE,
                 },

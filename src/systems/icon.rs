@@ -73,7 +73,6 @@ pub fn reorder_icons_system(
 
     reorder_trigger.0 = false;
 }
-
 fn lerp(start: f32, end: f32, t: f32) -> f32 {
     start + (end - start) * t
 }
