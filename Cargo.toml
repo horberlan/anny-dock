@@ -11,10 +11,10 @@ keywords = ["dock", "bevy", "hyprland", "animated"]
 authors = ["pois.nada"]
 
 [package.metadata.bundle]
-resources = ["assets/"]
+resources = ["assets"]
 
 [package.metadata.assets]
-paths = ["assets/"]
+paths = ["assets"]
 
 [dependencies]
 bevy = "0.11"

@@ -17,6 +17,8 @@ use bevy_easings::{Ease, EaseFunction, EasingType};
 use bevy_svg::prelude::{Origin, Svg2dBundle};
 use serde::{Deserialize, Serialize};
 
+static ASSETS_ICON_PIN_PATH: &str = "icons/pin_stroke_rounded.svg";
+
 #[derive(Component)]
 struct FavoritePin;
 
@@ -26,7 +28,7 @@ pub struct Favorites(pub Vec<String>);
 #[derive(Component, Debug)]
 pub struct Favorite;
 
-use crate::{ClientAddress, IconText, ASSETS_ICON_PIN_PATH, FONT_PATH, ICON_SIZE};
+use crate::{ClientAddress, IconText, ICON_SIZE};
 
 pub(crate) fn add_client_address(commands: &mut Commands, entity: Entity, address: String) {
     commands.entity(entity).insert(ClientAddress(address));
