@@ -30,9 +30,6 @@ use std::sync::{mpsc::channel, Arc, Mutex};
 use crate::systems::*;
 use systems::animation::ScrollAnimationState;
 
-static FONT_PATH: &str = "fonts/VictorMonoNerdFontMono-Regular.ttf";
-static ASSETS_ICON_PIN_PATH: &str = "icons/pin_stroke_rounded.svg";
-
 fn main() {
     let client_list = load_clients();
     let favorites = load_favorites();
