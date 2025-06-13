@@ -58,8 +58,7 @@ pub(crate) fn add_icon_text(
             text: Text::from_section(
                 class.to_string(),
                 TextStyle {
-                    // font: asset_server.load(FONT_PATH),
-                    font: TextStyle::default().font,
+                    font: asset_server.load(FONT_PATH),
                     font_size: 8.0 * scale,
                     color: Color::WHITE,
                 },
