@@ -1,5 +1,5 @@
 use crate::types::*;
-use crate::utils::DockConfig;
+use crate::config::Config;
 use bevy::input::mouse::MouseWheel;
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
@@ -8,7 +8,7 @@ pub fn scroll_system(
     mut scroll_state: ResMut<ScrollState>,
     mut scroll_events: EventReader<MouseWheel>,
     q_icons: Query<&HoverTarget>,
-    config: Res<DockConfig>,
+    config: Res<Config>,
     windows: Query<&Window, With<PrimaryWindow>>,
 ) {
     let total_items = q_icons.iter().count();

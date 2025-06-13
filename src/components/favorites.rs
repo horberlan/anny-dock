@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 static ASSETS_ICON_PIN_PATH: &str = "icons/pin_stroke_rounded.svg";
 
 #[derive(Component)]
-struct FavoritePin;
+pub struct FavoritePin;
 
 #[derive(Resource, Deserialize, Serialize, Clone, Default)]
 pub struct Favorites(pub Vec<String>);
@@ -28,7 +28,7 @@ pub struct Favorites(pub Vec<String>);
 #[derive(Component, Debug)]
 pub struct Favorite;
 
-use crate::{ClientAddress, IconText, ICON_SIZE};
+use crate::{config::Config, ClientAddress, IconText};
 
 pub(crate) fn add_client_address(commands: &mut Commands, entity: Entity, address: String) {
     commands.entity(entity).insert(ClientAddress(address));
@@ -38,9 +38,10 @@ pub(crate) fn add_favorite(
     commands: &mut Commands,
     entity: Entity,
     asset_server: &Res<AssetServer>,
+    config: &Res<Config>,
 ) {
     commands.entity(entity).insert(Favorite);
-    set_favorite_pin(commands, asset_server, entity);
+    set_favorite_pin(commands, asset_server, entity, config);
 }
 
 pub(crate) fn add_icon_text(
@@ -49,7 +50,8 @@ pub(crate) fn add_icon_text(
     class: &str,
     transform: Transform,
     scale: f32,
-    asset_server: &AssetServer,
+    _asset_server: &AssetServer,
+    config: &Res<Config>,
 ) {
     const TEXT_OFFSET: f32 = 8.0;
 
@@ -68,7 +70,7 @@ pub(crate) fn add_icon_text(
             transform: Transform {
                 translation: Vec3::new(
                     transform.translation.x,
-                    transform.translation.y - (ICON_SIZE * scale / 2.0) - TEXT_OFFSET,
+                    transform.translation.y - (config.icon_size * scale / 2.0) - TEXT_OFFSET,
                     transform.translation.z - 0.01,
                 ),
                 scale: Vec3::splat(scale),
@@ -83,9 +85,10 @@ pub(crate) fn set_favorite_pin(
     commands: &mut Commands,
     asset_server: &Res<AssetServer>,
     parent_entity: Entity,
+    config: &Res<Config>,
 ) {
     commands.entity(parent_entity).with_children(|parent| {
-        let translation = Vec3::new(ICON_SIZE / 3.0, ICON_SIZE / 2.0, 0.1);
+        let translation = Vec3::new(config.icon_size / 3.0, config.icon_size / 2.0, 0.1);
 
         let initial_transform = Transform {
             translation,

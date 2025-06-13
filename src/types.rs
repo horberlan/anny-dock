@@ -8,7 +8,7 @@ pub struct Client {
     pub class: String,
     pub address: String,
     #[serde(default)]
-    pub name: Option<String>,
+    pub _name: Option<String>,
 }
 
 #[derive(Component)]
@@ -74,27 +74,17 @@ pub struct ReorderIcons;
 #[derive(Resource, Default)]
 pub struct DockOrder(pub Vec<String>);
 
-pub const ICON_SIZE: f32 = 56.0;
 
 #[derive(Event)]
-pub struct IconRemovedEvent(pub String);
+pub struct IconRemovedEvent;
 
-#[derive(Resource)]
+#[derive(Resource, Default)]
 pub struct ScrollState {
     pub offset: Vec2,
     pub total_scroll_distance: f32,
-    pub max_visible_items: usize,
 }
 
-impl Default for ScrollState {
-    fn default() -> Self {
-        Self {
-            offset: Vec2::ZERO,
-            total_scroll_distance: 0.0,
-            max_visible_items: 8,
-        }
-    }
-}
+
 
 #[derive(Resource, Clone)]
 pub struct HyprlandEventReceiver(pub Arc<Mutex<Receiver<HyprIpcEvent>>>);
@@ -103,6 +93,7 @@ pub struct HyprlandEventReceiver(pub Arc<Mutex<Receiver<HyprIpcEvent>>>);
 pub enum HyprIpcEvent {
     OpenWindow {
         address: String,
+        #[allow(dead_code)]
         workspace: String,
         class: String,
         title: String,
@@ -110,5 +101,5 @@ pub enum HyprIpcEvent {
     CloseWindow {
         address: String,
     },
-    Other(String),
+    Other,
 }

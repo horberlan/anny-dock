@@ -1,8 +1,8 @@
 pub use loader::*;
 pub mod hover;
 pub mod loader;
-pub mod config;
 
+use crate::config::Config;
 use bevy::log::{error, info, warn};
 use bevy::math::{Vec2, Vec3};
 use std::fs;
@@ -151,45 +151,16 @@ fn parse_desktop_file(content: &str, class: &str) -> Option<String> {
 }
 
 #[derive(Resource)]
-pub struct DockConfig {
-    pub margin_x: f32,
-    pub margin_y: f32,
-    pub spacing: f32,
-    pub z_spacing: f32,
-    pub base_scale: f32,
-    pub scale_factor: f32,
-    pub scroll_speed: f32,
-    pub visible_items: usize,
-    pub tilt_y: f32,
-}
-
-impl Default for DockConfig {
-    fn default() -> Self {
-        Self {
-            margin_x: 85.0,
-            margin_y: 50.0,
-            spacing: 40.0,
-            z_spacing: 2.0,
-            base_scale: 1.2,
-            scale_factor: 0.9,
-            scroll_speed: 15.0,
-            visible_items: 8,
-            tilt_y: 0.25,
-        }
-    }
-}
-
-#[derive(Resource)]
 pub struct IconAnimationState {
-    pub is_scrolling: bool,
-    pub scroll_timer: Timer,
+    pub _is_scrolling: bool,
+    pub _scroll_timer: Timer,
 }
 
 impl Default for IconAnimationState {
     fn default() -> Self {
         Self {
-            is_scrolling: false,
-            scroll_timer: Timer::from_seconds(0.3, TimerMode::Once),
+            _is_scrolling: false,
+            _scroll_timer: Timer::from_seconds(0.3, TimerMode::Once),
         }
     }
 }
@@ -198,7 +169,7 @@ pub fn calculate_icon_transform(
     index: usize,
     start_pos: Vec2,
     direction: Vec2,
-    config: &DockConfig,
+    config: &Config,
     scroll_offset: Vec2,
 ) -> (Vec3, f32) {
     let base_offset = direction * (index as f32 * config.spacing);
@@ -220,3 +191,11 @@ pub fn calculate_icon_transform(
     (Vec3::new(x, y, z), scale)
 }
 
+pub fn update_sprite_alpha(sprite: &mut Sprite, is_pinned: bool, is_running: bool) {
+    let alpha = if is_pinned && !is_running {
+        0.5
+    } else {
+        1.0
+    };
+    sprite.color.set_a(alpha);
+}

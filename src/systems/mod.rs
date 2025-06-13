@@ -7,7 +7,6 @@ mod keybinds;
 mod title;
 
 pub use animation::icon_scale_animation_system;
-pub use animation::ScrollAnimationState;
 pub use camera::*;
 pub use drag::*;
 pub use icon::*;

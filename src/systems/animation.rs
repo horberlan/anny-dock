@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy::input::mouse::MouseWheel;
 use crate::types::*;
-use crate::utils::DockConfig;
+use crate::config::Config;
 
 #[derive(Resource, Default)]
 pub struct ScrollAnimationState {
@@ -10,9 +10,9 @@ pub struct ScrollAnimationState {
 }
 
 pub fn icon_scale_animation_system(
-    mut q_icons: Query<(&mut Transform, &HoverTarget)>,
-    scroll_state: Res<ScrollState>,
-    config: Res<DockConfig>,
+    _q_icons: Query<(&Transform, &HoverTarget)>,
+    _scroll_state: Res<ScrollState>,
+    _config: Res<Config>,
     time: Res<Time>,
     mut scroll_events: EventReader<MouseWheel>,
     mut scroll_animation: ResMut<ScrollAnimationState>,
@@ -29,7 +29,3 @@ pub fn icon_scale_animation_system(
 
     scroll_events.clear();
 }
-
-fn lerp(start: f32, end: f32, t: f32) -> f32 {
-    start + (end - start) * t.clamp(0.0, 1.0)
-} 
