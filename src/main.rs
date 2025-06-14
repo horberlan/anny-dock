@@ -248,49 +248,26 @@ fn toggle_favorite_system(
     config: Res<Config>,
     q_pins: Query<Entity, With<FavoritePin>>,
     mouse_button: Res<Input<MouseButton>>,
-    windows: Query<&Window, With<PrimaryWindow>>,
-    q_camera: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
 ) {
     if mouse_button.just_released(MouseButton::Right) {
-        let window = windows.single();
-        if let Some(cursor_pos) = window.cursor_position() {
-            if let Ok((camera, camera_transform)) = q_camera.get_single() {
-                if let Some(world_pos) = camera.viewport_to_world_2d(camera_transform, cursor_pos) {
-                    for (
-                        entity,
-                        client_class,
-                        mut sprite,
-                        address_opt,
-                        favorite_opt,
-                        _hover_target,
-                        transform,
-                        children,
-                    ) in &mut q_icons
-                    {
-                        let pos = transform.translation.truncate();
-                        let size = Vec2::splat(config.icon_size);
-                        let rect = Rect::from_center_size(pos, size * 1.1);
-                        if rect.contains(world_pos) && sprite.is_some() {
-                            toggle_favorite(
-                                &mut commands,
-                                &mut images,
-                                &mut favorites,
-                                &mut reorder_trigger,
-                                &mut dock_order,
-                                entity,
-                                &client_class.0,
-                                favorite_opt.is_some(),
-                                sprite.as_deref_mut().unwrap(),
-                                address_opt,
-                                &config,
-                                children,
-                                &q_pins,
-                            );
-                            break;
-                        }
-                    }
-                }
-            }
+        if let Some((entity, class, mut sprite_opt, address_opt, favorite_opt, _hover, _transform, children)) =
+            q_icons.iter_mut().find(|(_, _, _, _, _, hover, _, _)| hover.is_hovered)
+        {
+            toggle_favorite(
+                &mut commands,
+                &mut images,
+                &mut favorites,
+                &mut reorder_trigger,
+                &mut dock_order,
+                entity,
+                &class.0,
+                favorite_opt.is_some(),
+                sprite_opt.as_deref_mut().unwrap(),
+                address_opt,
+                &config,
+                children,
+                &q_pins,
+            );
         }
     }
 }
