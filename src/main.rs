@@ -129,7 +129,6 @@ fn setup(
     let start_y = -window_height / 2.0 + config.margin_y;
     let start_pos = Vec2::new(start_x, start_y);
     let center = Vec2::new(0.0, window_height * config.tilt_y);
-    let direction = (center - start_pos).normalize_or_zero();
 
     let mut all_apps: Vec<(String, Option<Client>, bool)> = Vec::new();
     let mut initial_order = Vec::new();
@@ -159,6 +158,8 @@ fn setup(
     }
 
     commands.insert_resource(DockOrder(initial_order));
+
+    let direction = (center - start_pos).normalize_or_zero();
 
     for (index, (class, client_opt, is_favorite)) in all_apps.iter().enumerate() {
         let (translation, scale) =
@@ -541,7 +542,7 @@ fn process_new_windows(
         let direction = (center - start_pos).normalize_or_zero();
 
         let (translation, scale) =
-            calculate_icon_transform(0, start_pos, direction, config, Vec2::ZERO);
+            calculate_icon_transform(dock_order.0.len() - 1, start_pos, direction, config, Vec2::ZERO);
         let transform = Transform {
             translation,
             scale: Vec3::splat(scale),
@@ -750,7 +751,7 @@ fn handle_hypr_open_window(
     let direction = (center - start_pos).normalize_or_zero();
 
     let (translation, scale) =
-        calculate_icon_transform(0, start_pos, direction, &config, Vec2::ZERO);
+        calculate_icon_transform(dock_order.0.len() - 1, start_pos, direction, config, Vec2::ZERO);
     let transform = Transform {
         translation,
         scale: Vec3::splat(scale),

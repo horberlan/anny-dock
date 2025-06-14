@@ -172,22 +172,35 @@ pub fn calculate_icon_transform(
     config: &Config,
     scroll_offset: Vec2,
 ) -> (Vec3, f32) {
-    let base_offset = direction * (index as f32 * config.spacing);
+    let scale_dampening = 0.4;
+    let r = config.scale_factor + (1.0 - config.scale_factor) * scale_dampening;
+
+    let spacing_boost = 1.2;
+    let i = index as f32;
+
+    let total_spacing_multiplier = if (r - 1.0).abs() < f32::EPSILON {
+        i
+    } else {
+        (1.0 - r.powf(i)) / (1.0 - r)
+    };
+
+    let base_offset =
+        direction * (total_spacing_multiplier * config.spacing * spacing_boost * config.base_scale);
     let scrolled_pos = start_pos + base_offset - scroll_offset;
-    
+
     let x = scrolled_pos.x;
     let y = scrolled_pos.y;
     let z = -(index as f32 * config.z_spacing);
-    
-    let base_scale = config.base_scale * config.scale_factor.powi(index as i32);
-    
+
+    let base_scale = config.base_scale * r.powi(index as i32);
+
     let is_scrolling = scroll_offset.length() > 0.1;
     let scale = if is_scrolling {
         config.base_scale
     } else {
         base_scale
     };
-    
+
     (Vec3::new(x, y, z), scale)
 }
 
