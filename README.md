@@ -95,6 +95,7 @@ anny-dock's configuration can be customized through a TOML file located at `~/.c
 
 ```toml
 [config]
+visible_items = 8          # Number of items visible in the list           
 margin_x = 85.0          # Horizontal margin from screen edge
 margin_y = 50.0          # Vertical margin from screen edge
 spacing = 40.0           # Space between icons
