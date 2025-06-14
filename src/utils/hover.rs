@@ -8,7 +8,7 @@ use bevy::window::PrimaryWindow;
 use bevy::time::Timer;
 use std::time::Duration;
 
-use crate::{Dragging, HoverTarget, MainCamera, UiState, ICON_SIZE, ScrollState, DockConfig};
+use crate::{config::Config, types::*};
 
 const HOVER_LIFT: f32 = 15.0;
 const HOVER_SCALE: f32 = 1.15;
@@ -20,6 +20,7 @@ pub fn hover_system(
     mut q_icons: Query<(&mut HoverTarget, &Transform)>,
     time: Res<Time>,
     ui_state: Res<UiState>,
+    config: Res<Config>,
 ) {
     if ui_state.dragging.is_some() {
         return;
@@ -32,7 +33,7 @@ pub fn hover_system(
                 let mut top_hovered: Option<(usize, f32)> = None;
                 for (i, (_hover_target, transform)) in q_icons.iter().enumerate() {
                     let icon_position = transform.translation.truncate();
-                    let size = Vec2::splat(ICON_SIZE);
+                    let size = Vec2::splat(config.icon_size);
                     let rect = Rect::from_center_size(icon_position, size * 1.1);
                     if rect.contains(world_pos) {
                         let z = transform.translation.z;
@@ -112,7 +113,7 @@ pub fn hover_animation_system(
     ), Without<Dragging>>,
     ui_state: Res<UiState>,
     scroll_state: Res<ScrollState>,
-    config: Res<crate::utils::DockConfig>,
+    config: Res<Config>,
 ) {
     if ui_state.dragging.is_some() {
         return;

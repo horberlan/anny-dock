@@ -1,26 +1,11 @@
-use bevy::prelude::{Component, Resource};
-use bevy::{
-    asset::AssetServer,
-    ecs::{
-        entity::Entity,
-        system::{Commands, Res},
-    },
-    hierarchy::BuildChildren,
-    math::Vec3,
-    render::color::Color,
-    text::{Text, Text2dBundle, TextAlignment, TextStyle},
-    transform::components::Transform,
-    utils::default,
-};
+use bevy::prelude::{*};
+use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+use bevy::sprite::SpriteBundle;
 
-use bevy_easings::{Ease, EaseFunction, EasingType};
-use bevy_svg::prelude::{Origin, Svg2dBundle};
 use serde::{Deserialize, Serialize};
 
-static ASSETS_ICON_PIN_PATH: &str = "icons/pin_stroke_rounded.svg";
-
 #[derive(Component)]
-struct FavoritePin;
+pub struct FavoritePin;
 
 #[derive(Resource, Deserialize, Serialize, Clone, Default)]
 pub struct Favorites(pub Vec<String>);
@@ -28,7 +13,7 @@ pub struct Favorites(pub Vec<String>);
 #[derive(Component, Debug)]
 pub struct Favorite;
 
-use crate::{ClientAddress, IconText, ICON_SIZE};
+use crate::{config::Config, ClientAddress, IconText};
 
 pub(crate) fn add_client_address(commands: &mut Commands, entity: Entity, address: String) {
     commands.entity(entity).insert(ClientAddress(address));
@@ -37,10 +22,11 @@ pub(crate) fn add_client_address(commands: &mut Commands, entity: Entity, addres
 pub(crate) fn add_favorite(
     commands: &mut Commands,
     entity: Entity,
-    asset_server: &Res<AssetServer>,
+    images: &mut Assets<Image>,
+    config: &Res<Config>,
 ) {
     commands.entity(entity).insert(Favorite);
-    set_favorite_pin(commands, asset_server, entity);
+    set_favorite_pin(commands, images, entity, config);
 }
 
 pub(crate) fn add_icon_text(
@@ -49,7 +35,8 @@ pub(crate) fn add_icon_text(
     class: &str,
     transform: Transform,
     scale: f32,
-    asset_server: &AssetServer,
+    _asset_server: &AssetServer,
+    config: &Res<Config>,
 ) {
     const TEXT_OFFSET: f32 = 8.0;
 
@@ -58,7 +45,8 @@ pub(crate) fn add_icon_text(
             text: Text::from_section(
                 class.to_string(),
                 TextStyle {
-                    font: asset_server.load(FONT_PATH),
+                    // font: asset_server.load(FONT_PATH),
+                    font: TextStyle::default().font,
                     font_size: 8.0 * scale,
                     color: Color::WHITE,
                 },
@@ -67,7 +55,7 @@ pub(crate) fn add_icon_text(
             transform: Transform {
                 translation: Vec3::new(
                     transform.translation.x,
-                    transform.translation.y - (ICON_SIZE * scale / 2.0) - TEXT_OFFSET,
+                    transform.translation.y - (config.icon_size * scale / 2.0) - TEXT_OFFSET,
                     transform.translation.z - 0.01,
                 ),
                 scale: Vec3::splat(scale),
@@ -78,41 +66,77 @@ pub(crate) fn add_icon_text(
         .insert(IconText(entity));
 }
 
+fn load_svg_pin_from_bytes(svg_bytes: &[u8]) -> Option<Image> {
+    use resvg::render;
+    use tiny_skia::Pixmap;
+    use usvg::{Options, Tree};
+
+    let opts = Options::default();
+    let tree = match Tree::from_data(svg_bytes, &opts) {
+        Ok(tree) => tree,
+        Err(e) => {
+            error!("Failed to parse SVG for pin: {}", e);
+            return None;
+        }
+    };
+
+    let pixmap_size = tree.size.to_screen_size();
+    let mut pixmap = match Pixmap::new(pixmap_size.width(), pixmap_size.height()) {
+        Some(p) => p,
+        _ => {
+            error!("Failed to create pixmap for pin");
+            return None;
+        }
+    };
+
+    if render(
+        &tree,
+        usvg::FitTo::Original,
+        tiny_skia::Transform::default(),
+        pixmap.as_mut(),
+    )
+    .is_none()
+    {
+        error!("Failed to render SVG to pixmap for pin");
+        return None;
+    }
+
+    let rgba = pixmap.data().to_vec();
+    Some(Image::new(
+        Extent3d {
+            width: pixmap_size.width(),
+            height: pixmap_size.height(),
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        rgba,
+        TextureFormat::Rgba8Unorm,
+    ))
+}
+
 pub(crate) fn set_favorite_pin(
     commands: &mut Commands,
-    asset_server: &Res<AssetServer>,
+    images: &mut Assets<Image>,
     parent_entity: Entity,
+    config: &Res<Config>,
 ) {
-    commands.entity(parent_entity).with_children(|parent| {
-        let translation = Vec3::new(ICON_SIZE / 3.0, ICON_SIZE / 2.0, 0.1);
+    const PIN_ICON_SVG: &[u8] = include_bytes!("../../assets/icons/pin_stroke_rounded.svg");
+    if let Some(image) = load_svg_pin_from_bytes(PIN_ICON_SVG) {
+        let handle = images.add(image);
+        commands.entity(parent_entity).with_children(|parent| {
+            let transform = Transform {
+                translation: Vec3::new(config.icon_size / 3.0, config.icon_size / 3.0, 0.1),
+                scale: Vec3::splat(0.4),
+                ..default()
+            };
 
-        let initial_transform = Transform {
-            translation,
-            scale: Vec3::splat(0.4),
-            ..default()
-        };
-
-        let target_transform = Transform {
-            translation,
-            scale: Vec3::splat(1.0),
-            ..default()
-        };
-
-        parent
-            .spawn(Svg2dBundle {
-                svg: asset_server.load(ASSETS_ICON_PIN_PATH),
-                origin: Origin::Center,
-                transform: initial_transform,
-                ..Default::default()
-            })
-            .insert(FavoritePin)
-            .insert(initial_transform.ease_to(
-                target_transform,
-                EaseFunction::ElasticOut,
-                EasingType::PingPong {
-                    duration: std::time::Duration::from_millis(400),
-                    pause: Some(std::time::Duration::from_millis(50)),
-                },
-            ));
-    });
+            parent
+                .spawn(SpriteBundle {
+                    texture: handle,
+                    transform,
+                    ..Default::default()
+                })
+                .insert(FavoritePin);
+        });
+    }
 }

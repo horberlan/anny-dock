@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use crate::types::*;
-use crate::utils::DockConfig;
+use crate::config::Config;
 
 pub fn drag_register_click_system(
     windows: Query<&Window, With<PrimaryWindow>>,
@@ -22,6 +22,7 @@ pub fn drag_check_system(
     q_icons: Query<(Entity, &HoverTarget, &Transform)>,
     mouse_button: Res<Input<MouseButton>>,
     mut ui_state: ResMut<UiState>,
+    config: Res<Config>,
 ) {
     if mouse_button.pressed(MouseButton::Left) && ui_state.dragging.is_none() {
         if let (Some(click_origin), Ok(window)) = (ui_state.click_origin, windows.get_single()) {
@@ -33,7 +34,7 @@ pub fn drag_check_system(
                         {
                             for (entity, hover, transform) in q_icons.iter() {
                                 let pos = transform.translation.truncate();
-                                let size = Vec2::splat(ICON_SIZE * hover.original_scale);
+                                let size = Vec2::splat(config.icon_size * hover.original_scale);
                                 let rect = Rect::from_center_size(pos, size * 1.1);
                                 if rect.contains(world_cursor) {
                                     let offset = world_cursor - pos;
@@ -58,7 +59,7 @@ pub fn drag_update_system(
     q_camera: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
     mut q_dragging: Query<(&mut Transform, &Dragging, &HoverTarget)>,
     ui_state: Res<UiState>,
-    config: Res<DockConfig>,
+    config: Res<Config>,
 ) {
     if let Some(entity) = ui_state.dragging {
         if let Ok((mut transform, dragging, hover)) = q_dragging.get_mut(entity) {

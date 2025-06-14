@@ -12,7 +12,6 @@ use xdgkit::icon_finder;
 use crate::components::Favorites;
 use crate::Client;
 
-static FALLBACK_ICON_SVG: &[u8] = include_bytes!("../../assets/icons/dock_icon.svg");
 
 pub fn get_current_clients() -> Result<Vec<Client>, std::io::Error> {
     let output = Command::new("hyprctl").args(["clients", "-j"]).output()?;

@@ -87,25 +87,39 @@ cargo run --release
 - **T**: Toggle application titles
 - **Q/Esc**: Close application
 - **1..8**: Launch/Focus visible applications
+- **Arrow Keys (←/→)**: Scroll the dock left and right
 - **Drag & Drop**: Reorder icons
-
 ### Configuration
 
-anny-dock can be configured through the `DockConfig` resource:
+anny-dock's configuration can be customized through a TOML file located at `~/.config/anny-dock/config.toml`. The configuration system includes:
 
-```rust
-pub struct DockConfig {
-    pub margin_x: f32,        // Horizontal margin from screen edge
-    pub margin_y: f32,        // Vertical margin from screen edge
-    pub spacing: f32,         // Space between icons
-    pub z_spacing: f32,       // Depth spacing for 3D effect
-    pub base_scale: f32,      // Base icon scale
-    pub scale_factor: f32,    // Scale factor for animations
-    pub scroll_speed: f32,    // Scroll sensitivity
-    pub visible_items: usize, // Number of visible icons
-    pub tilt_y: f32,          // Inclination factor (0.0 = horizontal, 0.5 = strong diagonal)
-}
+```toml
+[config]
+visible_items = 8        # Number of items visible in the list           
+margin_x = 85.0          # Horizontal margin from screen edge
+margin_y = 50.0          # Vertical margin from screen edge
+spacing = 40.0           # Space between icons
+z_spacing = 2.0          # Depth spacing for 3D effect
+base_scale = 1.2         # Base icon scale
+scale_factor = 0.9       # Scale factor for animations
+scroll_speed = 15.0      # Scroll sensitivity
+tilt_y = 0.25            # Inclination factor (0.0 = horizontal, 0.5 = strong diagonal)
+icon_size = 56.0         # Base size of icons
 ```
+
+#### Configuration File Location
+
+- Default location: `~/.config/anny-dock/config.toml`
+- The file will be created automatically on first run if it doesn't exist
+- All values are optional - missing values will use defaults
+- Changes take effect immediately after saving
+
+#### Configuration Organization
+
+- All configuration options are now centralized in the `Config` struct
+- Configuration values are loaded from a dedicated module
+- Default values are more clearly defined and easier to modify
+- Configuration is now more modular and easier to extend
 
 #### Dock Inclination (`tilt_y`)
 
@@ -138,9 +152,9 @@ anny-dock is built using a modern ECS architecture with Bevy:
 - [x] Basic animation system
 - [x] Icon management
 - [x] Favorite applications
+- [x] Scroll using keyboard arrows
 
 ### Planned
-- [ ] Scroll using keyboard arrows
 - [ ] Configuration file
 - [ ] Migrate to hyprland layer
 - [ ] Custom themes

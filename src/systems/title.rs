@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use crate::types::*;
 use crate::components::add_icon_text;
+use crate::config::Config;
 
 pub fn toggle_titles(
     mut commands: Commands,
@@ -8,6 +9,7 @@ pub fn toggle_titles(
     keyboard_input: Res<Input<KeyCode>>,
     q_icons: Query<(Entity, &Transform, &ClientClass, &HoverTarget)>,
     asset_server: Res<AssetServer>,
+    config: Res<Config>,
     q_texts: Query<Entity, With<IconText>>,
 ) {
     if keyboard_input.just_pressed(KeyCode::T) {
@@ -22,6 +24,7 @@ pub fn toggle_titles(
                     *transform,
                     transform.scale.y,
                     &asset_server,
+                    &config,
                 );
             }
         } else {
