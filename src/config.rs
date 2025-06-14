@@ -6,7 +6,6 @@ use std::path::PathBuf;
 
 #[derive(Resource, Serialize, Deserialize, Debug, Clone)]
 pub struct Config {
-    pub position: String,
     pub icon_size: f32,
     pub margin_x: f32,
     pub margin_y: f32,
@@ -22,7 +21,6 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            position: "bottom".to_string(),
             icon_size: 56.0,
             margin_x: 85.0,
             margin_y: 50.0,

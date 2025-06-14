@@ -71,6 +71,7 @@ fn main() {
         .add_event::<IconRemovedEvent>()
         .add_systems(Startup, setup)
         .add_systems(Startup, setup_hyprland_monitor)
+        
         .add_systems(Update, cleanup_duplicate_cameras)
         .add_systems(
             Update,
@@ -868,4 +869,6 @@ fn handle_close_pinned_window(
         dock_order.0[index] = pinned_addr;
     }
 }
+
+
 
