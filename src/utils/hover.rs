@@ -121,8 +121,7 @@ pub fn hover_animation_system(
 
     let delta_time = time.delta_seconds();
 
-    let scroll = scroll_state.offset.x;
-    let first_visible_index = scroll.floor() as usize;
+    let scroll = scroll_state.total_scroll_distance / config.spacing;    let first_visible_index = scroll.floor() as usize;
     let interp = scroll - scroll.floor();
 
     let mut scales = vec![1.0; config.visible_items];
