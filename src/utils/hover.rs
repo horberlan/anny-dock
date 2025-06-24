@@ -14,6 +14,16 @@ const HOVER_LIFT: f32 = 15.0;
 const HOVER_SCALE: f32 = 1.15;
 const ANIMATION_SMOOTHNESS: f32 = 0.85;
 
+fn reset_hover_state(q_icons: &mut Query<(&mut HoverTarget, &Transform)>) {
+    for (mut hover, _) in q_icons.iter_mut() {
+        if hover.is_hovered && hover.hover_exit_timer.is_none() {
+            hover.hover_exit_timer =
+                Some(Timer::new(Duration::from_secs_f32(0.15), TimerMode::Once));
+        }
+        hover.is_hovered = false;
+    }
+}
+
 pub fn hover_system(
     windows: Query<&Window, With<PrimaryWindow>>,
     q_camera: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
@@ -57,20 +67,10 @@ pub fn hover_system(
                     }
                 }
             } else {
-                for (mut hover, _) in &mut q_icons {
-                    if hover.is_hovered && hover.hover_exit_timer.is_none() {
-                        hover.hover_exit_timer = Some(Timer::new(Duration::from_secs_f32(0.15), TimerMode::Once));
-                    }
-                    hover.is_hovered = false;
-                }
+                reset_hover_state(&mut q_icons);
             }
         } else {
-            for (mut hover, _) in &mut q_icons {
-                if hover.is_hovered && hover.hover_exit_timer.is_none() {
-                    hover.hover_exit_timer = Some(Timer::new(Duration::from_secs_f32(0.15), TimerMode::Once));
-                }
-                hover.is_hovered = false;
-            }
+            reset_hover_state(&mut q_icons);
         }
     }
 
