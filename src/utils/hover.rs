@@ -33,7 +33,7 @@ pub fn hover_system(
                 let mut top_hovered: Option<(usize, f32)> = None;
                 for (i, (_hover_target, transform)) in q_icons.iter().enumerate() {
                     let icon_position = transform.translation.truncate();
-                    let size = Vec2::splat(config.icon_size);
+                    let size = Vec2::splat(config.icon_size * transform.scale.x);
                     let rect = Rect::from_center_size(icon_position, size * 1.1);
                     if rect.contains(world_pos) {
                         let z = transform.translation.z;
@@ -121,7 +121,7 @@ pub fn hover_animation_system(
 
     let delta_time = time.delta_seconds();
 
-    let scroll = scroll_state.total_scroll_distance / config.spacing;
+    let scroll = scroll_state.offset.x;
     let first_visible_index = scroll.floor() as usize;
     let interp = scroll - scroll.floor();
 
