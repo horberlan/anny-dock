@@ -32,16 +32,25 @@ pub fn drag_check_system(
                         if let Some(world_cursor) =
                             camera.viewport_to_world_2d(camera_transform, cursor_pos)
                         {
-                            for (entity, hover, transform) in q_icons.iter() {
+                            let mut top_dragged: Option<(Entity, f32, Vec2)> = None;
+
+                            for (entity, _hover, transform) in q_icons.iter() {
                                 let pos = transform.translation.truncate();
-                                let size = Vec2::splat(config.icon_size * hover.original_scale);
+                                let size = Vec2::splat(config.icon_size * transform.scale.x);
                                 let rect = Rect::from_center_size(pos, size * 1.1);
+
                                 if rect.contains(world_cursor) {
-                                    let offset = world_cursor - pos;
-                                    commands.entity(entity).insert(Dragging { offset });
-                                    ui_state.dragging = Some(entity);
-                                    break;
+                                    let z = transform.translation.z;
+                                    if top_dragged.is_none() || z > top_dragged.unwrap().1 {
+                                        top_dragged = Some((entity, z, pos));
+                                    }
                                 }
+                            }
+
+                            if let Some((entity, _z, pos)) = top_dragged {
+                                let offset = world_cursor - pos;
+                                commands.entity(entity).insert(Dragging { offset });
+                                ui_state.dragging = Some(entity);
                             }
                         }
                     }
