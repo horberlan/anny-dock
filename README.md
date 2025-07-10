@@ -24,6 +24,9 @@ Currently exclusive to Hyprland, with plans to support other window managers in 
 
 </div>
 
+## Appearance
+<img src="appearance.gif"/>
+
 ## Features
 
 ### Smooth Animations
