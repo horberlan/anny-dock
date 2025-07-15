@@ -16,6 +16,7 @@ pub struct Config {
     pub scroll_speed: f32,
     pub visible_items: usize,
     pub tilt_y: f32,
+    pub font_size: f32,
 }
 
 impl Default for Config {
@@ -31,6 +32,7 @@ impl Default for Config {
             scroll_speed: 15.0,
             visible_items: 8,
             tilt_y: 0.25,
+            font_size: 16.0,
         }
     }
 }
