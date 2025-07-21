@@ -25,39 +25,10 @@ Currently exclusive to Hyprland, with plans to support other window managers in 
 </div>
 
 ## Appearance
+
 <img src="appearance.gif"/>
 
-## Features
-
-### Smooth Animations
-- 🎯 Intelligent hover effects with smooth transitions
-- 🔄 Natural **diagonal scrolling behavior** (now with configurable inclination)
-- ✨ Frame-rate independent animations
-- 🎨 Subtle scale transformations
-
-### Smart Icon Management
-- 📱 Dynamic icon loading and scaling
-- 🔍 Automatic icon discovery from running applications
-- 📌 Pinnable favorite applications
-- 🎯 Precise icon positioning with smooth reordering
-
-### Hyprland Integration
-- 🖥️ Seamless Hyprland window management
-- 🚀 Native Hyprland client detection
-- 🎨 Transparent background support
-- 🔗 Direct window focusing and management
-
-### Modern Interface
-- 🖼️ Transparent background support
-- 🎨 High-quality SVG icon rendering
-- 📐 Configurable dock size and position
-- 🔲 Clean, minimal design
-
-### Performance
-- ⚡ Hardware-accelerated rendering
-- 🎮 Optimized animation system
-- 🔄 Efficient state management
-- 📊 Low resource usage
+![appearance](https://i.ibb.co/DHgKfVdD/appearance.gif)
 
 ## Requirements
 
@@ -65,6 +36,7 @@ Currently exclusive to Hyprland, with plans to support other window managers in 
 - Rust 1.75+
 
 ## Installation
+You can install the **anny-dock** manually by cloning this repo and building from source:
 
 ```bash
 # Clone the repository
@@ -79,6 +51,17 @@ cargo build --release
 # Run anny-dock
 cargo run --release
 ```
+or downloading it and installing it directly (from [Crates](https://crates.io))
+
+```bash
+cargo install anny-dock
+```
+
+Besides, you may opt for moving the target path to your local binaries for turning the **anny-dock** an executable in your system $PATH:
+```bash
+cp target/release/anny-dock /usr/local/bin
+```
+
 
 ## Usage
 
@@ -178,9 +161,6 @@ cargo build
 
 # Release build
 cargo build --release
-
-# Run tests
-cargo test
 ```
 
 ## Contributing
