@@ -16,7 +16,7 @@ Currently exclusive to Hyprland, with plans to support other window managers in 
 > I'm also learning along the way. Feedback and suggestions are greatly appreciated as I explore 
 > Rust's capabilities and best practices.
 
-[Features](#features) •
+[Appearance](#appearance) •
 [Installation](#installation) •
 [Usage](#usage) •
 [Configuration](#configuration) •
@@ -26,9 +26,7 @@ Currently exclusive to Hyprland, with plans to support other window managers in 
 
 ## Appearance
 
-<img src="appearance.gif"/>
-
-![appearance](https://i.ibb.co/DHgKfVdD/appearance.gif)
+[![appearance](https://img.youtube.com/vi/yGkF93IRhU8/hqdefault.jpg)](https://www.youtube.com/embed/yGkF93IRhU8)
 
 ## Requirements
 
