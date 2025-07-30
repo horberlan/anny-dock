@@ -16,7 +16,7 @@ Currently exclusive to Hyprland, with plans to support other window managers in 
 > I'm also learning along the way. Feedback and suggestions are greatly appreciated as I explore 
 > Rust's capabilities and best practices.
 
-[Features](#features) •
+[Appearance](#appearance) •
 [Installation](#installation) •
 [Usage](#usage) •
 [Configuration](#configuration) •
@@ -24,37 +24,9 @@ Currently exclusive to Hyprland, with plans to support other window managers in 
 
 </div>
 
-## Features
+## Appearance
 
-### Smooth Animations
-- 🎯 Intelligent hover effects with smooth transitions
-- 🔄 Natural **diagonal scrolling behavior** (now with configurable inclination)
-- ✨ Frame-rate independent animations
-- 🎨 Subtle scale transformations
-
-### Smart Icon Management
-- 📱 Dynamic icon loading and scaling
-- 🔍 Automatic icon discovery from running applications
-- 📌 Pinnable favorite applications
-- 🎯 Precise icon positioning with smooth reordering
-
-### Hyprland Integration
-- 🖥️ Seamless Hyprland window management
-- 🚀 Native Hyprland client detection
-- 🎨 Transparent background support
-- 🔗 Direct window focusing and management
-
-### Modern Interface
-- 🖼️ Transparent background support
-- 🎨 High-quality SVG icon rendering
-- 📐 Configurable dock size and position
-- 🔲 Clean, minimal design
-
-### Performance
-- ⚡ Hardware-accelerated rendering
-- 🎮 Optimized animation system
-- 🔄 Efficient state management
-- 📊 Low resource usage
+[![appearance](https://img.youtube.com/vi/yGkF93IRhU8/hqdefault.jpg)](https://www.youtube.com/embed/yGkF93IRhU8)
 
 ## Requirements
 
@@ -62,6 +34,7 @@ Currently exclusive to Hyprland, with plans to support other window managers in 
 - Rust 1.75+
 
 ## Installation
+You can install the **anny-dock** manually by cloning this repo and building from source:
 
 ```bash
 # Clone the repository
@@ -76,6 +49,17 @@ cargo build --release
 # Run anny-dock
 cargo run --release
 ```
+or downloading it and installing it directly (from [Crates](https://crates.io))
+
+```bash
+cargo install anny-dock
+```
+
+Besides, you may opt for moving the target path to your local binaries for turning the **anny-dock** an executable in your system $PATH:
+```bash
+cp target/release/anny-dock /usr/local/bin
+```
+
 
 ## Usage
 
@@ -155,11 +139,12 @@ anny-dock is built using a modern ECS architecture with Bevy:
 - [x] Scroll using keyboard arrows
 
 ### Planned
+- [ ] Add it to the Arch User Repository
 - [ ] Configuration file
 - [ ] Migrate to hyprland layer
-- [ ] Custom themes
+- [ ] Include custom themes
 - [ ] Multi-monitor support
-- [ ] Support for other window managers
+- [ ] Make it window manager agnostic
 
 ## Development
 
@@ -175,9 +160,6 @@ cargo build
 
 # Release build
 cargo build --release
-
-# Run tests
-cargo test
 ```
 
 ## Contributing
