@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use serde::Deserialize;
-use std::collections::HashMap;
+
 use std::sync::{Arc, Mutex, mpsc::Receiver};
 
 #[derive(Deserialize, Debug, Clone)]
@@ -48,10 +48,7 @@ pub struct HoverTarget {
 }
 
 #[derive(Component)]
-pub struct IconText(pub Entity);
-
-#[derive(Resource, Default)]
-pub struct IconPositions(pub HashMap<Entity, (Vec3, Vec3)>);
+pub struct IconTitleText;
 
 #[derive(Resource)]
 pub struct ReorderTrigger(pub bool);

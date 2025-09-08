@@ -13,7 +13,8 @@ pub struct Favorites(pub Vec<String>);
 #[derive(Component, Debug)]
 pub struct Favorite;
 
-use crate::{config::Config, ClientAddress, IconText};
+use crate::config::Config;
+use crate::types::{ClientAddress, IconTitleText};
 
 pub(crate) fn add_client_address(commands: &mut Commands, entity: Entity, address: String) {
     commands.entity(entity).insert(ClientAddress(address));
@@ -31,39 +32,66 @@ pub(crate) fn add_favorite(
 
 pub(crate) fn add_icon_text(
     commands: &mut Commands,
-    entity: Entity,
+    parent_icon: Entity,
     class: &str,
-    transform: Transform,
-    scale: f32,
     _asset_server: &AssetServer,
     config: &Res<Config>,
 ) {
     const TEXT_OFFSET: f32 = 8.0;
 
-    commands
-        .spawn(Text2dBundle {
-            text: Text::from_section(
-                class.to_string(),
-                TextStyle {
-                    // font: asset_server.load(FONT_PATH),
-                    font: TextStyle::default().font,
-                    font_size: 8.0 * scale,
-                    color: Color::WHITE,
+    commands.entity(parent_icon).with_children(|parent| {
+        parent.spawn((
+            Text2dBundle {
+                text: Text::from_section(
+                    class.to_string(),
+                    TextStyle {
+                        font: TextStyle::default().font,
+                        font_size: config.font_size,
+                        color: Color::WHITE,
+                    },
+                )
+                .with_alignment(TextAlignment::Center),
+                transform: Transform {
+                    translation: Vec3::new(
+                        0.0,
+                        -(config.icon_size / 2.0) - TEXT_OFFSET,
+                        0.1, 
+                    ),
+                    ..default()
                 },
-            )
-            .with_alignment(TextAlignment::Center),
-            transform: Transform {
-                translation: Vec3::new(
-                    transform.translation.x,
-                    transform.translation.y - (config.icon_size * scale / 2.0) - TEXT_OFFSET,
-                    transform.translation.z - 0.01,
-                ),
-                scale: Vec3::splat(scale),
+                visibility: Visibility::Hidden,
                 ..default()
             },
-            ..default()
-        })
-        .insert(IconText(entity));
+            IconTitleText,
+        ));
+    });
+}
+
+pub(crate) fn set_favorite_pin(
+    commands: &mut Commands,
+    images: &mut Assets<Image>,
+    parent_entity: Entity,
+    config: &Res<Config>,
+) {
+    const PIN_ICON_SVG: &[u8] = include_bytes!("../../assets/icons/pin_stroke_rounded.svg");
+    if let Some(image) = load_svg_pin_from_bytes(PIN_ICON_SVG) {
+        let handle = images.add(image);
+        commands.entity(parent_entity).with_children(|parent| {
+            let transform = Transform {
+                translation: Vec3::new(config.icon_size / 3.0, config.icon_size / 3.0, 0.1),
+                scale: Vec3::splat(0.4),
+                ..default()
+            };
+
+            parent
+                .spawn(SpriteBundle {
+                    texture: handle,
+                    transform,
+                    ..Default::default()
+                })
+                .insert(FavoritePin);
+        });
+    }
 }
 
 fn load_svg_pin_from_bytes(svg_bytes: &[u8]) -> Option<Image> {
@@ -112,31 +140,4 @@ fn load_svg_pin_from_bytes(svg_bytes: &[u8]) -> Option<Image> {
         rgba,
         TextureFormat::Rgba8Unorm,
     ))
-}
-
-pub(crate) fn set_favorite_pin(
-    commands: &mut Commands,
-    images: &mut Assets<Image>,
-    parent_entity: Entity,
-    config: &Res<Config>,
-) {
-    const PIN_ICON_SVG: &[u8] = include_bytes!("../../assets/icons/pin_stroke_rounded.svg");
-    if let Some(image) = load_svg_pin_from_bytes(PIN_ICON_SVG) {
-        let handle = images.add(image);
-        commands.entity(parent_entity).with_children(|parent| {
-            let transform = Transform {
-                translation: Vec3::new(config.icon_size / 3.0, config.icon_size / 3.0, 0.1),
-                scale: Vec3::splat(0.4),
-                ..default()
-            };
-
-            parent
-                .spawn(SpriteBundle {
-                    texture: handle,
-                    transform,
-                    ..Default::default()
-                })
-                .insert(FavoritePin);
-        });
-    }
 }

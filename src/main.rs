@@ -31,6 +31,13 @@ use std::sync::{mpsc::channel, Arc, Mutex};
 use crate::systems::*;
 use systems::animation::ScrollAnimationState;
 
+#[derive(SystemSet, Debug, Hash, PartialEq, Eq, Clone)]
+enum AppSystemSet {
+    Input,
+    Logic,
+    Animation,
+}
+
 fn main() {
     let config = load_config();
     let client_list = load_clients();
@@ -58,7 +65,7 @@ fn main() {
         .add_plugins(SvgPlugin)
         .insert_resource(ClearColor(Color::NONE))
         .insert_resource(ClientList(client_list))
-        .insert_resource(IconPositions::default())
+
         .insert_resource(ShowTitles(false))
         .insert_resource(UiState::default())
         .insert_resource(favorites)
@@ -73,30 +80,43 @@ fn main() {
         .add_systems(Startup, setup_hyprland_monitor)
         
         .add_systems(Update, cleanup_duplicate_cameras)
+        .configure_sets(
+            Update,
+            (AppSystemSet::Input, AppSystemSet::Logic, AppSystemSet::Animation).chain(),
+        )
         .add_systems(
             Update,
             (
-                scroll_system,
-                scroll_with_arrows,
-                hover_system,
-                hover_animation_system,
-                icon_scale_animation_system,
-                collect_icon_data.before(update_text_positions),
-                update_text_positions,
-                icon_click_system,
-                toggle_favorite_system.in_set(StateUpdate),
-                toggle_titles,
-                drag_register_click_system,
-                drag_check_system,
-                drag_update_system,
-                drag_end_system.in_set(StateUpdate),
-                reset_positions_system,
-                reorder_icons_system.in_set(ReorderIcons),
-                process_hyprland_events,
-                exit_on_esc_or_q,
-                keybind_launch_visible_icons,
-            )
-                .chain(),
+                // Input Systems
+                (
+                    scroll_system,
+                    scroll_with_arrows,
+                    icon_click_system,
+                    toggle_titles,
+                    drag_register_click_system,
+                    exit_on_esc_or_q,
+                    keybind_launch_visible_icons,
+                    process_hyprland_events,
+                ).in_set(AppSystemSet::Input),
+
+                // Logic Systems
+                (
+                    drag_check_system,
+                    drag_update_system,
+
+                    hover_system,
+                    toggle_favorite_system,
+                    drag_end_system,
+                    reorder_icons_system,
+                    reset_positions_system,
+                ).in_set(AppSystemSet::Logic),
+
+                // Animation Systems
+                (
+                    hover_animation_system,
+                    icon_scale_animation_system,
+                ).in_set(AppSystemSet::Animation),
+            ),
         )
         .run();
 }
@@ -107,7 +127,7 @@ fn setup(
     mut images: ResMut<Assets<Image>>,
     client_list: Res<ClientList>,
     windows: Query<&Window, With<PrimaryWindow>>,
-    show_titles: Res<ShowTitles>,
+    _show_titles: Res<ShowTitles>,
     favorites: Res<Favorites>,
     config: Res<Config>,
 ) {
@@ -195,6 +215,8 @@ fn setup(
             hover_exit_timer: None,
         });
 
+        add_icon_text(&mut commands, icon_entity, class, &asset_server, &config);
+
         if let Some(client) = client_opt {
             add_client_address(&mut commands, icon_entity, client.address.clone());
             commands
@@ -203,30 +225,10 @@ fn setup(
             commands
                 .entity(icon_entity)
                 .insert(ClientClass(client.class.clone()));
-        } else if *is_favorite {
-            let placeholder_address = format!("pinned:{}", class);
-            add_client_address(&mut commands, icon_entity, placeholder_address.clone());
-            commands
-                .entity(icon_entity)
-                .insert(ClientAddress(placeholder_address));
-            commands
-                .entity(icon_entity)
-                .insert(ClientClass(class.clone()));
         }
 
         if *is_favorite {
             add_favorite(&mut commands, icon_entity, &mut images, &config);
-        }
-        if show_titles.0 {
-            add_icon_text(
-                &mut commands,
-                icon_entity,
-                class,
-                transform,
-                scale,
-                &asset_server,
-                &config,
-            );
         }
     }
 }
@@ -582,8 +584,6 @@ fn process_new_windows(
                 commands,
                 icon_entity,
                 &client.class,
-                transform,
-                scale,
                 asset_server,
                 config,
             );
@@ -787,15 +787,7 @@ fn handle_hypr_open_window(
         .insert(ClientClass(client.class.clone()));
 
     if show_titles.0 {
-        add_icon_text(
-            commands,
-            icon_entity,
-            &client.class,
-            transform,
-            scale,
-            asset_server,
-            config,
-        );
+        add_icon_text(commands, icon_entity, &class, asset_server, config);
     }
 }
 
