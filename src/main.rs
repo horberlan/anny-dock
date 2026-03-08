@@ -132,10 +132,11 @@ fn setup(
 
     let mut all_apps: Vec<(String, Option<Client>, bool)> = Vec::new();
     let mut initial_order = Vec::new();
-    let mut processed_favorites = HashSet::new();
+    let mut processed_classes = HashSet::new();
 
+    // Primeiro, adiciona os favoritos na ordem salva
     for fav_class in &favorites.0 {
-        if processed_favorites.contains(fav_class) {
+        if processed_classes.contains(fav_class) {
             continue;
         }
 
@@ -147,13 +148,15 @@ fn setup(
         } else {
             initial_order.push(format!("pinned:{}", fav_class));
         }
-        processed_favorites.insert(fav_class.clone());
+        processed_classes.insert(fav_class.clone());
     }
 
+    // Depois, adiciona as aplicações não-favoritas que estão abertas
     for client in &client_list.0 {
-        if !favorites.0.contains(&client.class) {
+        if !processed_classes.contains(&client.class) {
             all_apps.push((client.class.clone(), Some(client.clone()), false));
             initial_order.push(client.address.clone());
+            processed_classes.insert(client.class.clone());
         }
     }
 
@@ -186,32 +189,17 @@ fn setup(
             index,
         );
 
-        commands.entity(icon_entity).insert(HoverTarget {
-            original_position: translation.truncate(),
-            original_z: translation.z,
-            original_scale: scale,
-            index,
-            is_hovered: false,
-            hover_exit_timer: None,
-        });
-
         if let Some(client) = client_opt {
             add_client_address(&mut commands, icon_entity, client.address.clone());
             commands
                 .entity(icon_entity)
                 .insert(ClientAddress(client.address.clone()));
-            commands
-                .entity(icon_entity)
-                .insert(ClientClass(client.class.clone()));
         } else if *is_favorite {
             let placeholder_address = format!("pinned:{}", class);
             add_client_address(&mut commands, icon_entity, placeholder_address.clone());
             commands
                 .entity(icon_entity)
                 .insert(ClientAddress(placeholder_address));
-            commands
-                .entity(icon_entity)
-                .insert(ClientClass(class.clone()));
         }
 
         if *is_favorite {
@@ -317,7 +305,29 @@ fn toggle_favorite(
     } else {
         info!("Adding favorite: {}", app_class);
         if !favorites.0.contains(&app_class.to_string()) {
+            // Adiciona o favorito no final da lista de favoritos
             favorites.0.push(app_class.to_string());
+            
+            // Atualiza a ordem na dock para mover o item para a posição correta
+            if let Some(current_addr) = q_address {
+                let current_addr_str = current_addr.0.clone();
+                
+                // Remove o endereço atual da ordem
+                dock_order.0.retain(|a| a != &current_addr_str);
+                
+                // Encontra a posição onde inserir (após os outros favoritos)
+                let mut insert_pos = 0;
+                for addr in &dock_order.0 {
+                    if addr.starts_with("pinned:") {
+                        insert_pos += 1;
+                    } else {
+                        break;
+                    }
+                }
+                
+                // Insere na posição correta
+                dock_order.0.insert(insert_pos, current_addr_str);
+            }
         }
         add_favorite(commands, entity, images, config);
         reorder_trigger.0 = true;
@@ -518,6 +528,15 @@ fn process_new_windows(
 ) {
 
     for (_index, client) in new_windows.iter().enumerate() {
+        // Verifica se já existe um ícone para este endereço
+        if q_entities.iter().any(|(_, addr_opt, _, _)| {
+            addr_opt.map_or(false, |a| a.0 == client.address)
+        }) {
+            info!("Window already exists in dock: {}", client.address);
+            continue;
+        }
+
+        // Verifica se existe um ícone pinned para esta classe
         if let Some((entity, _, _, Some(mut sprite))) = q_entities.iter_mut().find(|(_, addr_opt, class_opt, _)| {
             addr_opt.map_or(false, |a| a.0.starts_with("pinned:"))
                 && class_opt.map_or(false, |c| c.0 == client.class)
@@ -560,22 +579,10 @@ fn process_new_windows(
             0,
         );
 
-        commands.entity(icon_entity).insert(HoverTarget {
-            original_position: translation.truncate(),
-            original_z: translation.z,
-            original_scale: scale,
-            index: 0,
-            is_hovered: false,
-            hover_exit_timer: None,
-        });
-
         add_client_address(commands, icon_entity, client.address.clone());
         commands
             .entity(icon_entity)
             .insert(ClientAddress(client.address.clone()));
-        commands
-            .entity(icon_entity)
-            .insert(ClientClass(client.class.clone()));
 
         if show_titles.0 {
             add_icon_text(
@@ -721,6 +728,14 @@ fn handle_hypr_open_window(
     class: String,
     title: String,
 ) {
+    // Verifica se já existe um ícone para este endereço
+    if q_entities.iter().any(|(_, addr_opt, _, _)| {
+        addr_opt.map_or(false, |a| a.0 == address)
+    }) {
+        info!("Window already exists in dock: {}", address);
+        return;
+    }
+
     let client = Client {
         address: address.clone(),
         class: class.clone(),
@@ -769,22 +784,10 @@ fn handle_hypr_open_window(
         0,
     );
 
-    commands.entity(icon_entity).insert(HoverTarget {
-        original_position: translation.truncate(),
-        original_z: translation.z,
-        original_scale: scale,
-        index: 0,
-        is_hovered: false,
-        hover_exit_timer: None,
-    });
-
     add_client_address(commands, icon_entity, client.address.clone());
     commands
         .entity(icon_entity)
         .insert(ClientAddress(client.address.clone()));
-    commands
-        .entity(icon_entity)
-        .insert(ClientClass(client.class.clone()));
 
     if show_titles.0 {
         add_icon_text(
