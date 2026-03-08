@@ -293,6 +293,7 @@ fn toggle_favorite(
                     }
                 }
             }
+            // Reorder will be triggered and will move this to non-favorites section
         } else {
             // App is not running, it only exists because it was a favorite.
             // Despawn the whole thing.
@@ -305,31 +306,12 @@ fn toggle_favorite(
     } else {
         info!("Adding favorite: {}", app_class);
         if !favorites.0.contains(&app_class.to_string()) {
-            // Adiciona o favorito no final da lista de favoritos
+            // Add favorite to the list
             favorites.0.push(app_class.to_string());
-            
-            // Atualiza a ordem na dock para mover o item para a posição correta
-            if let Some(current_addr) = q_address {
-                let current_addr_str = current_addr.0.clone();
-                
-                // Remove o endereço atual da ordem
-                dock_order.0.retain(|a| a != &current_addr_str);
-                
-                // Encontra a posição onde inserir (após os outros favoritos)
-                let mut insert_pos = 0;
-                for addr in &dock_order.0 {
-                    if addr.starts_with("pinned:") {
-                        insert_pos += 1;
-                    } else {
-                        break;
-                    }
-                }
-                
-                // Insere na posição correta
-                dock_order.0.insert(insert_pos, current_addr_str);
-            }
         }
         add_favorite(commands, entity, images, config);
+        
+        // Trigger full reorder to place favorites correctly
         reorder_trigger.0 = true;
     }
     save_favorites(favorites);

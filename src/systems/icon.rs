@@ -1,7 +1,7 @@
 use crate::types::*;
 use crate::config::Config;
 use crate::utils::calculate_icon_transform;
-use crate::IconText;
+use crate::{IconText, Favorite, Favorites};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 
@@ -35,13 +35,44 @@ pub fn update_text_positions(
 }
 
 pub fn reorder_icons_system(
-    mut q_icons: Query<(Entity, &ClientAddress, &mut Transform, &mut HoverTarget)>,
-    dock_order: Res<DockOrder>,
+    mut q_icons: Query<(Entity, &ClientAddress, &ClientClass, &mut Transform, &mut HoverTarget, Option<&Favorite>)>,
+    mut dock_order: ResMut<DockOrder>,
+    favorites: Res<Favorites>,
     windows: Query<&Window, With<PrimaryWindow>>,
     scroll_state: Res<ScrollState>,
     config: Res<Config>,
     mut reorder_trigger: ResMut<ReorderTrigger>,
 ) {
+    if reorder_trigger.0 {
+        // Rebuild dock_order to ensure favorites are first
+        let mut new_order = Vec::new();
+        let mut non_favorite_addresses = Vec::new();
+        
+        // Collect all current addresses with their classes
+        let mut address_to_class: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+        for (_, addr, class, _, _, _) in q_icons.iter() {
+            address_to_class.insert(addr.0.clone(), class.0.clone());
+        }
+        
+        // First, add favorites in order
+        for fav_class in &favorites.0 {
+            // Find the address for this favorite class
+            if let Some((_, addr, _, _, _, _)) = q_icons.iter().find(|(_, _, class, _, _, _)| &class.0 == fav_class) {
+                new_order.push(addr.0.clone());
+            }
+        }
+        
+        // Then, add non-favorites
+        for (_, addr, _, _, _, favorite_opt) in q_icons.iter() {
+            if favorite_opt.is_none() && !new_order.contains(&addr.0) {
+                non_favorite_addresses.push(addr.0.clone());
+            }
+        }
+        
+        new_order.extend(non_favorite_addresses);
+        dock_order.0 = new_order;
+    }
+    
     let window = windows.single();
     let start_x = -window.width() / 2.0 + config.margin_x;
     let start_y = -window.height() / 2.0 + config.margin_y;
@@ -53,7 +84,7 @@ pub fn reorder_icons_system(
         let (translation, scale) =
             calculate_icon_transform(index, start_pos, direction, &config, scroll_state.offset);
 
-        for (_entity, icon_address, mut transform, mut hover) in q_icons.iter_mut() {
+        for (_entity, icon_address, _, mut transform, mut hover, _) in q_icons.iter_mut() {
             if icon_address.0 == *address {
                 let current_pos = transform.translation;
                 let target_pos = translation;
