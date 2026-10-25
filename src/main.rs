@@ -19,8 +19,8 @@ use std::process::Command;
 use types::*;
 use utils::hover::{hover_animation_system, hover_system};
 use utils::{
-    calculate_icon_transform, launch_application, load_clients, load_favorites, save_favorites,
-    update_sprite_alpha, IconAnimationState,
+    calculate_icon_transform, launch_application, load_clients, load_favorites, parse_hypr_event,
+    save_favorites, update_sprite_alpha, IconAnimationState,
 };
 use config::{load_config, Config};
 
@@ -610,23 +610,8 @@ fn setup_hyprland_monitor(mut commands: Commands) {
         let reader = BufReader::new(stream);
 
         for line in reader.lines().flatten() {
-            if let Some(rest) = line.strip_prefix("openwindow>>") {
-                let mut parts = rest.splitn(4, ',');
-                if let (Some(address), Some(workspace), Some(class), Some(title)) =
-                    (parts.next(), parts.next(), parts.next(), parts.next())
-                {
-                    let _ = event_sender.send(HyprIpcEvent::OpenWindow {
-                        address: address.to_string(),
-                        workspace: workspace.to_string(),
-                        class: class.to_string(),
-                        title: title.to_string(),
-                    });
-                }
-            } else if let Some(rest) = line.strip_prefix("closewindow>>") {
-                let address = rest.trim().to_string();
-                let _ = event_sender.send(HyprIpcEvent::CloseWindow { address });
-            } else {
-                let _ = event_sender.send(HyprIpcEvent::Other);
+            if let Some(event) = parse_hypr_event(&line) {
+                let _ = event_sender.send(event);
             }
         }
     });

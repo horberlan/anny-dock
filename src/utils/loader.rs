@@ -10,6 +10,7 @@ use std::process::Command;
 use xdgkit::icon_finder;
 
 use crate::components::Favorites;
+use crate::types::HyprIpcEvent;
 use crate::Client;
 
 
@@ -27,6 +28,37 @@ pub fn get_current_clients() -> Result<Vec<Client>, std::io::Error> {
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
 
     Ok(clients)
+}
+
+/// Parses a line from Hyprland's `.socket2.sock`. Events carry window addresses
+/// without the `0x` prefix that `hyprctl clients -j` uses, so they are
+/// normalized to match the addresses loaded at startup.
+pub fn parse_hypr_event(line: &str) -> Option<HyprIpcEvent> {
+    if let Some(rest) = line.strip_prefix("openwindow>>") {
+        let mut parts = rest.splitn(4, ',');
+        let (address, workspace, class, title) =
+            (parts.next()?, parts.next()?, parts.next()?, parts.next()?);
+        Some(HyprIpcEvent::OpenWindow {
+            address: normalize_address(address),
+            workspace: workspace.to_string(),
+            class: class.to_string(),
+            title: title.to_string(),
+        })
+    } else if let Some(rest) = line.strip_prefix("closewindow>>") {
+        Some(HyprIpcEvent::CloseWindow {
+            address: normalize_address(rest.trim()),
+        })
+    } else {
+        Some(HyprIpcEvent::Other)
+    }
+}
+
+fn normalize_address(address: &str) -> String {
+    if address.starts_with("0x") {
+        address.to_string()
+    } else {
+        format!("0x{address}")
+    }
 }
 
 pub fn load_favorites() -> Favorites {
@@ -147,5 +179,42 @@ mod tests {
 
         assert_eq!(&image.data[..4], &[255, 0, 0, 128]);
         assert_eq!(image.texture_descriptor.format, TextureFormat::Rgba8UnormSrgb);
+    }
+
+    #[test]
+    fn open_window_event_uses_hyprctl_address_format() {
+        let event = parse_hypr_event("openwindow>>555f420d44a0,1,firefox,Feed, Inbox — Firefox");
+
+        match event {
+            Some(HyprIpcEvent::OpenWindow { address, workspace, class, title }) => {
+                assert_eq!(address, "0x555f420d44a0");
+                assert_eq!(workspace, "1");
+                assert_eq!(class, "firefox");
+                assert_eq!(title, "Feed, Inbox — Firefox");
+            }
+            other => panic!("unexpected event: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn close_window_event_uses_hyprctl_address_format() {
+        match parse_hypr_event("closewindow>>555f420d44a0") {
+            Some(HyprIpcEvent::CloseWindow { address }) => assert_eq!(address, "0x555f420d44a0"),
+            other => panic!("unexpected event: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn prefixed_address_is_kept() {
+        match parse_hypr_event("closewindow>>0x555f420d44a0") {
+            Some(HyprIpcEvent::CloseWindow { address }) => assert_eq!(address, "0x555f420d44a0"),
+            other => panic!("unexpected event: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn unknown_and_malformed_events() {
+        assert!(matches!(parse_hypr_event("workspace>>2"), Some(HyprIpcEvent::Other)));
+        assert!(parse_hypr_event("openwindow>>555f420d44a0,1").is_none());
     }
 }
