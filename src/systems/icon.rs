@@ -1,6 +1,6 @@
 use crate::types::*;
 use crate::config::Config;
-use crate::utils::calculate_icon_transform;
+use crate::utils::{calculate_icon_transform, title_transform_scale};
 use crate::{IconText, Favorite, Favorites};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
@@ -29,7 +29,7 @@ pub fn update_text_positions(
             text_transform.translation.y =
                 icon_transform.translation.y - (config.icon_size * scale / 2.0) - 2.0;
             text_transform.translation.z = icon_transform.translation.z - 0.01;
-            text_transform.scale = Vec3::splat(scale);
+            text_transform.scale = Vec3::splat(title_transform_scale(scale, &config));
         }
     }
 }

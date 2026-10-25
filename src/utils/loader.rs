@@ -60,10 +60,10 @@ pub fn get_icon_path(class: &str) -> String {
     }
 }
 
-pub fn load_icon(path: &Path) -> Option<Image> {
+pub fn load_icon(path: &Path, size: u32) -> Option<Image> {
     if let Some(ext) = path.extension() {
         if ext == "svg" {
-            return load_svg_image(path);
+            return load_svg_image(path, size);
         }
     }
 
@@ -90,34 +90,62 @@ pub fn load_icon(path: &Path) -> Option<Image> {
     None
 }
 
-pub fn load_svg_image(path: &Path) -> Option<Image> {
+pub fn load_svg_image(path: &Path, size: u32) -> Option<Image> {
     let svg_data = std::fs::read(path).ok()?;
     let opt = usvg::Options::default();
     let tree = usvg::Tree::from_data(&svg_data, &opt).ok()?;
 
-    let pixmap_size = 56;
-    let mut pixmap = tiny_skia::Pixmap::new(pixmap_size, pixmap_size)?;
+    let mut pixmap = tiny_skia::Pixmap::new(size, size)?;
     resvg::render(
         &tree,
-        usvg::FitTo::Size(pixmap_size, pixmap_size),
+        usvg::FitTo::Size(size, size),
         tiny_skia::Transform::default(),
         pixmap.as_mut(),
     )?;
 
-    let data = pixmap.data().to_vec();
-    let image = Image::new_fill(
+    Some(image_from_pixmap(&pixmap))
+}
+
+/// tiny-skia stores premultiplied RGBA, while Bevy sprites blend with straight
+/// alpha; uploading it as-is darkens antialiased edges.
+pub fn image_from_pixmap(pixmap: &tiny_skia::Pixmap) -> Image {
+    let data: Vec<u8> = pixmap
+        .pixels()
+        .iter()
+        .flat_map(|pixel| {
+            let color = pixel.demultiply();
+            [color.red(), color.green(), color.blue(), color.alpha()]
+        })
+        .collect();
+
+    Image::new(
         Extent3d {
-            width: pixmap_size,
-            height: pixmap_size,
+            width: pixmap.width(),
+            height: pixmap.height(),
             depth_or_array_layers: 1,
         },
         TextureDimension::D2,
-        &data,
+        data,
         TextureFormat::Rgba8UnormSrgb,
-    );
-    Some(image)
+    )
 }
 
 pub fn load_clients() -> Vec<Client> {
     get_current_clients().unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn image_from_pixmap_stores_straight_alpha_srgb() {
+        let mut pixmap = tiny_skia::Pixmap::new(1, 1).unwrap();
+        pixmap.fill(tiny_skia::Color::from_rgba8(255, 0, 0, 128));
+
+        let image = image_from_pixmap(&pixmap);
+
+        assert_eq!(&image.data[..4], &[255, 0, 0, 128]);
+        assert_eq!(image.texture_descriptor.format, TextureFormat::Rgba8UnormSrgb);
+    }
 }

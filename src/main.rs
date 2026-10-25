@@ -188,6 +188,8 @@ fn setup(
             scale,
             alpha,
             index,
+            &config,
+            window.scale_factor() as f32,
         );
 
         if let Some(client) = client_opt {
@@ -560,6 +562,8 @@ fn process_new_windows(
             scale,
             1.0,
             0,
+            config,
+            window.scale_factor() as f32,
         );
 
         add_client_address(commands, icon_entity, client.address.clone());
@@ -765,6 +769,8 @@ fn handle_hypr_open_window(
         scale,
         1.0,
         0,
+        config,
+        window.scale_factor() as f32,
     );
 
     add_client_address(commands, icon_entity, client.address.clone());

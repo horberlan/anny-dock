@@ -3,6 +3,7 @@ use bevy::{
     core::Name,
     ecs::{entity::Entity, system::Commands},
     log::error,
+    math::Vec2,
     render::{
         color::Color,
         render_resource::{Extent3d, TextureDimension, TextureFormat},
@@ -15,7 +16,8 @@ use bevy::{
 use std::path::Path;
 
 use crate::{
-    utils::{get_icon_path, hover::HoverState, load_icon},
+    config::Config,
+    utils::{get_icon_path, hover::HoverState, icon_texture_size, image_from_pixmap, load_icon},
     ClientClass, ClientIcon, HoverTarget,
 };
 
@@ -68,19 +70,7 @@ fn load_svg_from_bytes(svg_bytes: &[u8], target_size: u32) -> Option<Image> {
         return None;
     }
 
-    let rgba = pixmap.data().to_vec();
-    let image = Image::new(
-        Extent3d {
-            width: final_width,
-            height: final_height,
-            depth_or_array_layers: 1,
-        },
-        TextureDimension::D2,
-        rgba,
-        TextureFormat::Rgba8Unorm,
-    );
-
-    Some(image)
+    Some(image_from_pixmap(&pixmap))
 }
 
 pub(crate) fn spawn_icon_entity(
@@ -92,11 +82,14 @@ pub(crate) fn spawn_icon_entity(
     scale: f32,
     alpha: f32,
     index: usize,
+    config: &Config,
+    window_scale_factor: f32,
 ) -> Entity {
     let icon_path = get_icon_path(class);
+    let texture_size = icon_texture_size(config, window_scale_factor);
 
     let handle = if icon_path == "memory://fallback_icon" {
-        if let Some(img) = load_svg_from_bytes(FALLBACK_ICON_SVG, 56) {
+        if let Some(img) = load_svg_from_bytes(FALLBACK_ICON_SVG, texture_size) {
             images.add(img)
         } else {
             error!("Failed to render fallback SVG icon!");
@@ -114,11 +107,11 @@ pub(crate) fn spawn_icon_entity(
         }
     } else {
         let path = Path::new(&icon_path);
-        if let Some(img) = load_icon(path) {
+        if let Some(img) = load_icon(path, texture_size) {
             images.add(img)
         } else {
             error!("Failed to load icon for {}, using fallback", class);
-            if let Some(img) = load_svg_from_bytes(FALLBACK_ICON_SVG, 56) {
+            if let Some(img) = load_svg_from_bytes(FALLBACK_ICON_SVG, texture_size) {
                 images.add(img)
             } else {
                 let img = Image::new_fill(
@@ -141,7 +134,13 @@ pub(crate) fn spawn_icon_entity(
         .spawn(SpriteBundle {
             texture: handle,
             transform,
-            sprite: Sprite { color, ..default() },
+            // Textures are rasterized above display size; pin the world size so
+            // any texture resolution renders at `icon_size` before scaling.
+            sprite: Sprite {
+                color,
+                custom_size: Some(Vec2::splat(config.icon_size)),
+                ..default()
+            },
             ..default()
         })
         .insert(ClientIcon)
