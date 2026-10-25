@@ -1,4 +1,5 @@
 mod components;
+mod icon;
 mod systems;
 mod types;
 mod utils;
@@ -18,8 +19,8 @@ use std::process::Command;
 use types::*;
 use utils::hover::{hover_animation_system, hover_system};
 use utils::{
-    calculate_icon_transform, launch_application, load_clients, load_favorites, save_favorites,
-    update_sprite_alpha, IconAnimationState,
+    calculate_icon_transform, launch_application, load_clients, load_favorites, parse_hypr_event,
+    save_favorites, update_sprite_alpha, IconAnimationState,
 };
 use config::{load_config, Config};
 
@@ -61,6 +62,7 @@ fn main() {
         .insert_resource(IconPositions::default())
         .insert_resource(ShowTitles(false))
         .insert_resource(UiState::default())
+        .insert_resource(DragPreview::default())
         .insert_resource(favorites)
         .insert_resource(ReorderTrigger::default())
         .insert_resource(DockOrder::default())
@@ -86,14 +88,20 @@ fn main() {
                 icon_click_system,
                 toggle_favorite_system.in_set(StateUpdate),
                 toggle_titles,
-                drag_register_click_system,
-                drag_check_system,
-                drag_update_system,
-                drag_end_system.in_set(StateUpdate),
+                (
+                    drag_register_click_system,
+                    drag_check_system,
+                    drag_update_system,
+                    drag_preview_system,
+                    drag_end_system.in_set(StateUpdate),
+                )
+                    .chain(),
+                persist_favorites_system,
+                // Must see the drag before reset_positions_system cancels it.
+                exit_on_esc_or_q,
                 reset_positions_system,
                 reorder_icons_system.in_set(ReorderIcons),
                 process_hyprland_events,
-                exit_on_esc_or_q,
                 keybind_launch_visible_icons,
             )
                 .chain(),
@@ -187,6 +195,8 @@ fn setup(
             scale,
             alpha,
             index,
+            &config,
+            window.scale_factor() as f32,
         );
 
         if let Some(client) = client_opt {
@@ -293,7 +303,7 @@ fn toggle_favorite(
                     }
                 }
             }
-            // Reorder will be triggered and will move this to non-favorites section
+            // The icon keeps its place in the dock; only the pin goes away
         } else {
             // App is not running, it only exists because it was a favorite.
             // Despawn the whole thing.
@@ -311,7 +321,7 @@ fn toggle_favorite(
         }
         add_favorite(commands, entity, images, config);
         
-        // Trigger full reorder to place favorites correctly
+        // The icon keeps its place; reorder syncs the saved favorites order
         reorder_trigger.0 = true;
     }
     save_favorites(favorites);
@@ -559,6 +569,8 @@ fn process_new_windows(
             scale,
             1.0,
             0,
+            config,
+            window.scale_factor() as f32,
         );
 
         add_client_address(commands, icon_entity, client.address.clone());
@@ -604,23 +616,8 @@ fn setup_hyprland_monitor(mut commands: Commands) {
         let reader = BufReader::new(stream);
 
         for line in reader.lines().flatten() {
-            if let Some(rest) = line.strip_prefix("openwindow>>") {
-                let mut parts = rest.splitn(4, ',');
-                if let (Some(address), Some(workspace), Some(class), Some(title)) =
-                    (parts.next(), parts.next(), parts.next(), parts.next())
-                {
-                    let _ = event_sender.send(HyprIpcEvent::OpenWindow {
-                        address: address.to_string(),
-                        workspace: workspace.to_string(),
-                        class: class.to_string(),
-                        title: title.to_string(),
-                    });
-                }
-            } else if let Some(rest) = line.strip_prefix("closewindow>>") {
-                let address = rest.trim().to_string();
-                let _ = event_sender.send(HyprIpcEvent::CloseWindow { address });
-            } else {
-                let _ = event_sender.send(HyprIpcEvent::Other);
+            if let Some(event) = parse_hypr_event(&line) {
+                let _ = event_sender.send(event);
             }
         }
     });
@@ -764,6 +761,8 @@ fn handle_hypr_open_window(
         scale,
         1.0,
         0,
+        config,
+        window.scale_factor() as f32,
     );
 
     add_client_address(commands, icon_entity, client.address.clone());

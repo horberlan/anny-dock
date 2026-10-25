@@ -1,5 +1,4 @@
 use bevy::prelude::{*};
-use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy::sprite::SpriteBundle;
 
 use serde::{Deserialize, Serialize};
@@ -13,7 +12,11 @@ pub struct Favorites(pub Vec<String>);
 #[derive(Component, Debug)]
 pub struct Favorite;
 
-use crate::{config::Config, ClientAddress, IconText};
+use crate::{
+    config::Config,
+    utils::{image_from_pixmap, max_icon_display_scale, title_transform_scale},
+    ClientAddress, IconText,
+};
 
 pub(crate) fn add_client_address(commands: &mut Commands, entity: Entity, address: String) {
     commands.entity(entity).insert(ClientAddress(address));
@@ -39,6 +42,7 @@ pub(crate) fn add_icon_text(
     config: &Res<Config>,
 ) {
     const TEXT_OFFSET: f32 = 8.0;
+    const FONT_SIZE: f32 = 8.0;
 
     commands
         .spawn(Text2dBundle {
@@ -47,7 +51,7 @@ pub(crate) fn add_icon_text(
                 TextStyle {
                     // font: asset_server.load(FONT_PATH),
                     font: TextStyle::default().font,
-                    font_size: 8.0 * scale,
+                    font_size: FONT_SIZE * max_icon_display_scale(config),
                     color: Color::WHITE,
                 },
             )
@@ -58,7 +62,7 @@ pub(crate) fn add_icon_text(
                     transform.translation.y - (config.icon_size * scale / 2.0) - TEXT_OFFSET,
                     transform.translation.z - 0.01,
                 ),
-                scale: Vec3::splat(scale),
+                scale: Vec3::splat(title_transform_scale(scale, config)),
                 ..default()
             },
             ..default()
@@ -101,17 +105,7 @@ fn load_svg_pin_from_bytes(svg_bytes: &[u8]) -> Option<Image> {
         return None;
     }
 
-    let rgba = pixmap.data().to_vec();
-    Some(Image::new(
-        Extent3d {
-            width: pixmap_size.width(),
-            height: pixmap_size.height(),
-            depth_or_array_layers: 1,
-        },
-        TextureDimension::D2,
-        rgba,
-        TextureFormat::Rgba8Unorm,
-    ))
+    Some(image_from_pixmap(&pixmap))
 }
 
 pub(crate) fn set_favorite_pin(

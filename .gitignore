@@ -1,3 +1,5 @@
 /target
 Cargo.lock
 favorites.json
+# AI context folder
+.context/

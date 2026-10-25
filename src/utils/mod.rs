@@ -204,6 +204,37 @@ pub fn calculate_icon_transform(
     (Vec3::new(x, y, z), scale)
 }
 
+/// Start position of the first icon and the unit direction the dock grows in.
+pub fn dock_axis(window: &Window, config: &Config) -> (Vec2, Vec2) {
+    let start_pos = Vec2::new(
+        -window.width() / 2.0 + config.margin_x,
+        -window.height() / 2.0 + config.margin_y,
+    );
+    let center = Vec2::new(0.0, window.height() * config.tilt_y);
+    (start_pos, (center - start_pos).normalize_or_zero())
+}
+
+/// Largest multiplier applied on top of `base_scale`: the first visible item in
+/// `hover_animation_system` (1.2). Hover (1.15) and drag (1.1) stay below it.
+const MAX_RELATIVE_SCALE: f32 = 1.2;
+
+/// Largest `Transform` scale an icon (and its title) can reach on screen.
+pub fn max_icon_display_scale(config: &Config) -> f32 {
+    config.base_scale * MAX_RELATIVE_SCALE
+}
+
+/// Texture side, in physical pixels, needed to draw an icon at its largest
+/// display size without upscaling.
+pub fn icon_texture_size(config: &Config, window_scale_factor: f32) -> u32 {
+    (config.icon_size * max_icon_display_scale(config) * window_scale_factor).ceil() as u32
+}
+
+/// Text2d glyphs ignore `Transform.scale`, so titles are rasterized at the
+/// largest display scale and only ever scaled down.
+pub fn title_transform_scale(icon_scale: f32, config: &Config) -> f32 {
+    icon_scale / max_icon_display_scale(config)
+}
+
 pub fn update_sprite_alpha(sprite: &mut Sprite, is_pinned: bool, is_running: bool) {
     let alpha = if is_pinned && !is_running {
         0.5
@@ -211,4 +242,33 @@ pub fn update_sprite_alpha(sprite: &mut Sprite, is_pinned: bool, is_running: boo
         1.0
     };
     sprite.color.set_a(alpha);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn icon_texture_covers_largest_display_size() {
+        let config = Config::default();
+        let largest = config.icon_size * max_icon_display_scale(&config);
+        let size = icon_texture_size(&config, 1.0) as f32;
+        assert!(size >= largest, "texture {size} smaller than display {largest}");
+        assert!(size < largest + 1.0, "texture {size} oversized for display {largest}");
+    }
+
+    #[test]
+    fn icon_texture_follows_window_scale_factor() {
+        let config = Config::default();
+        let largest = config.icon_size * max_icon_display_scale(&config) * 2.0;
+        assert!(icon_texture_size(&config, 2.0) as f32 >= largest);
+    }
+
+    #[test]
+    fn title_is_never_upscaled() {
+        let config = Config::default();
+        let max = max_icon_display_scale(&config);
+        assert!((title_transform_scale(max, &config) - 1.0).abs() < f32::EPSILON);
+        assert!(title_transform_scale(config.base_scale, &config) < 1.0);
+    }
 }
