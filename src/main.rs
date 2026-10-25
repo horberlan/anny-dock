@@ -62,6 +62,7 @@ fn main() {
         .insert_resource(IconPositions::default())
         .insert_resource(ShowTitles(false))
         .insert_resource(UiState::default())
+        .insert_resource(DragPreview::default())
         .insert_resource(favorites)
         .insert_resource(ReorderTrigger::default())
         .insert_resource(DockOrder::default())
@@ -87,15 +88,20 @@ fn main() {
                 icon_click_system,
                 toggle_favorite_system.in_set(StateUpdate),
                 toggle_titles,
-                drag_register_click_system,
-                drag_check_system,
-                drag_update_system,
-                drag_end_system.in_set(StateUpdate),
+                (
+                    drag_register_click_system,
+                    drag_check_system,
+                    drag_update_system,
+                    drag_preview_system,
+                    drag_end_system.in_set(StateUpdate),
+                )
+                    .chain(),
                 persist_favorites_system,
+                // Must see the drag before reset_positions_system cancels it.
+                exit_on_esc_or_q,
                 reset_positions_system,
                 reorder_icons_system.in_set(ReorderIcons),
                 process_hyprland_events,
-                exit_on_esc_or_q,
                 keybind_launch_visible_icons,
             )
                 .chain(),

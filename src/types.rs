@@ -37,6 +37,14 @@ pub struct UiState {
     pub click_origin: Option<Vec2>,
 }
 
+/// Live drop preview while an icon is dragged: `DockOrder` already shows the
+/// icon at `target_index`, and `original_order` restores it on cancel.
+#[derive(Resource, Default)]
+pub struct DragPreview {
+    pub original_order: Option<Vec<String>>,
+    pub target_index: usize,
+}
+
 #[derive(Component)]
 pub struct HoverTarget {
     pub original_position: Vec2,

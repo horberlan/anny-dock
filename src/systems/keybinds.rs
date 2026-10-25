@@ -82,11 +82,18 @@ pub fn keybind_launch_visible_icons(
     }
 }
 
-pub fn exit_on_esc_or_q(mut keys: EventReader<KeyboardInput>, mut exit: EventWriter<AppExit>) {
+pub fn exit_on_esc_or_q(
+    mut keys: EventReader<KeyboardInput>,
+    mut exit: EventWriter<AppExit>,
+    ui_state: Res<UiState>,
+) {
     for key_event in keys.read() {
         if let Some(key_code) = key_event.key_code {
+            // While dragging, Esc cancels the drag (reset_positions_system).
+            let cancels_drag = key_code == KeyCode::Escape && ui_state.dragging.is_some();
             if key_event.state == ButtonState::Pressed
                 && (key_code == KeyCode::Escape || key_code == KeyCode::Q)
+                && !cancels_drag
             {
                 exit.send(AppExit);
             }

@@ -41,6 +41,7 @@ pub fn reorder_icons_system(
     windows: Query<&Window, With<PrimaryWindow>>,
     scroll_state: Res<ScrollState>,
     config: Res<Config>,
+    ui_state: Res<UiState>,
     mut reorder_trigger: ResMut<ReorderTrigger>,
 ) {
     if reorder_trigger.0 {
@@ -96,16 +97,20 @@ pub fn reorder_icons_system(
         let (translation, scale) =
             calculate_icon_transform(index, start_pos, direction, &config, scroll_state.offset);
 
-        for (_entity, icon_address, _, mut transform, mut hover, _) in q_icons.iter_mut() {
+        for (entity, icon_address, _, mut transform, mut hover, _) in q_icons.iter_mut() {
             if icon_address.0 == *address {
-                let current_pos = transform.translation;
-                let target_pos = translation;
+                // The dragged icon follows the cursor (drag_update_system); its
+                // slot still updates so it animates there on drop or cancel.
+                if ui_state.dragging != Some(entity) {
+                    let current_pos = transform.translation;
+                    let target_pos = translation;
 
-                transform.translation = Vec3::new(
-                    lerp(current_pos.x, target_pos.x, 0.2),
-                    lerp(current_pos.y, target_pos.y, 0.2),
-                    target_pos.z,
-                );
+                    transform.translation = Vec3::new(
+                        lerp(current_pos.x, target_pos.x, 0.2),
+                        lerp(current_pos.y, target_pos.y, 0.2),
+                        target_pos.z,
+                    );
+                }
 
                 hover.original_position = translation.truncate();
                 hover.original_z = translation.z;

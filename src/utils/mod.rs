@@ -204,6 +204,16 @@ pub fn calculate_icon_transform(
     (Vec3::new(x, y, z), scale)
 }
 
+/// Start position of the first icon and the unit direction the dock grows in.
+pub fn dock_axis(window: &Window, config: &Config) -> (Vec2, Vec2) {
+    let start_pos = Vec2::new(
+        -window.width() / 2.0 + config.margin_x,
+        -window.height() / 2.0 + config.margin_y,
+    );
+    let center = Vec2::new(0.0, window.height() * config.tilt_y);
+    (start_pos, (center - start_pos).normalize_or_zero())
+}
+
 /// Largest multiplier applied on top of `base_scale`: the first visible item in
 /// `hover_animation_system` (1.2). Hover (1.15) and drag (1.1) stay below it.
 const MAX_RELATIVE_SCALE: f32 = 1.2;
