@@ -30,6 +30,13 @@ usvg = "0.28.0"
 tiny-skia = "0.8.0"
 dirs = "5.0"
 toml = "0.8"
+tracing = "0.1"
+regex = "1"
+lru = "0.12"
+thiserror = "1"
+
+[dev-dependencies]
+tempfile = "3"
 
 [features]
 # dev = ["bevy/dynamic_linking", "bevy/bevy_dev_tools"]

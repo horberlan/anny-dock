@@ -1,4 +1,5 @@
 mod components;
+mod icon;
 mod systems;
 mod types;
 mod utils;
