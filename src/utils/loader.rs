@@ -5,7 +5,8 @@ use bevy::{
 };
 
 use image::io::Reader as ImageReader;
-use std::path::Path;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use xdgkit::icon_finder;
 
@@ -61,16 +62,57 @@ fn normalize_address(address: &str) -> String {
     }
 }
 
+/// Older versions kept favorites in the working directory, so they depended on
+/// where the dock was launched from.
+const LEGACY_FAVORITES_PATH: &str = "favorites.json";
+
+fn favorites_path() -> Option<PathBuf> {
+    let dir = dirs::config_dir()?.join("anny-dock");
+    fs::create_dir_all(&dir).ok()?;
+    Some(dir.join("favorites.json"))
+}
+
 pub fn load_favorites() -> Favorites {
-    match std::fs::read_to_string("favorites.json") {
-        Ok(data) => serde_json::from_str(&data).unwrap_or_default(),
-        Err(_) => Favorites::default(),
+    match favorites_path() {
+        Some(path) => load_favorites_from(&path, Path::new(LEGACY_FAVORITES_PATH)),
+        None => read_favorites(Path::new(LEGACY_FAVORITES_PATH)).unwrap_or_default(),
     }
 }
 
 pub fn save_favorites(favorites: &Favorites) {
+    if let Some(path) = favorites_path() {
+        save_favorites_to(&path, favorites);
+    }
+}
+
+/// Reads `path`; when it does not exist yet, copies the legacy file there
+/// (leaving the legacy file in place).
+fn load_favorites_from(path: &Path, legacy_path: &Path) -> Favorites {
+    if path.exists() {
+        return read_favorites(path).unwrap_or_default();
+    }
+    match read_favorites(legacy_path) {
+        Some(favorites) => {
+            info!("Migrating favorites from {:?} to {:?}", legacy_path, path);
+            save_favorites_to(path, &favorites);
+            favorites
+        }
+        None => Favorites::default(),
+    }
+}
+
+fn read_favorites(path: &Path) -> Option<Favorites> {
+    serde_json::from_str(&fs::read_to_string(path).ok()?).ok()
+}
+
+fn save_favorites_to(path: &Path, favorites: &Favorites) {
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
     if let Ok(json) = serde_json::to_string(favorites) {
-        let _ = std::fs::write("favorites.json", json);
+        if let Err(e) = fs::write(path, json) {
+            warn!("Failed to save favorites to {:?}: {:?}", path, e);
+        }
     }
 }
 
@@ -216,5 +258,51 @@ mod tests {
     fn unknown_and_malformed_events() {
         assert!(matches!(parse_hypr_event("workspace>>2"), Some(HyprIpcEvent::Other)));
         assert!(parse_hypr_event("openwindow>>555f420d44a0,1").is_none());
+    }
+
+    fn favorites(classes: &[&str]) -> Favorites {
+        Favorites(classes.iter().map(|c| c.to_string()).collect())
+    }
+
+    #[test]
+    fn favorites_load_from_config_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config/favorites.json");
+        let legacy = dir.path().join("favorites.json");
+        save_favorites_to(&path, &favorites(&["kitty", "firefox"]));
+        save_favorites_to(&legacy, &favorites(&["legacy"]));
+
+        assert_eq!(load_favorites_from(&path, &legacy).0, ["kitty", "firefox"]);
+    }
+
+    #[test]
+    fn legacy_favorites_are_migrated_when_config_file_is_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config/favorites.json");
+        let legacy = dir.path().join("favorites.json");
+        save_favorites_to(&legacy, &favorites(&["firefox"]));
+
+        assert_eq!(load_favorites_from(&path, &legacy).0, ["firefox"]);
+        assert_eq!(read_favorites(&path).unwrap().0, ["firefox"]);
+        assert!(legacy.exists(), "legacy file must not be deleted");
+    }
+
+    #[test]
+    fn invalid_config_file_does_not_resurrect_legacy_favorites() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("favorites.json.new");
+        let legacy = dir.path().join("favorites.json");
+        std::fs::write(&path, "not json").unwrap();
+        save_favorites_to(&legacy, &favorites(&["legacy"]));
+
+        assert!(load_favorites_from(&path, &legacy).0.is_empty());
+    }
+
+    #[test]
+    fn no_favorites_anywhere_is_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let favorites = load_favorites_from(&dir.path().join("a.json"), &dir.path().join("b.json"));
+
+        assert!(favorites.0.is_empty());
     }
 }
