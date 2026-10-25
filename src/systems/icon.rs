@@ -1,6 +1,6 @@
 use crate::types::*;
 use crate::config::Config;
-use crate::utils::{calculate_icon_transform, title_transform_scale};
+use crate::utils::{calculate_icon_transform, save_favorites, title_transform_scale};
 use crate::{IconText, Favorite, Favorites};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
@@ -37,39 +37,51 @@ pub fn update_text_positions(
 pub fn reorder_icons_system(
     mut q_icons: Query<(Entity, &ClientAddress, &ClientClass, &mut Transform, &mut HoverTarget, Option<&Favorite>)>,
     mut dock_order: ResMut<DockOrder>,
-    favorites: Res<Favorites>,
+    mut favorites: ResMut<Favorites>,
     windows: Query<&Window, With<PrimaryWindow>>,
     scroll_state: Res<ScrollState>,
     config: Res<Config>,
     mut reorder_trigger: ResMut<ReorderTrigger>,
 ) {
     if reorder_trigger.0 {
-        // Rebuild dock_order to ensure favorites are first
-        let mut new_order = Vec::new();
-        let mut non_favorite_addresses = Vec::new();
-        
-        // Collect all current addresses with their classes
-        let mut address_to_class: std::collections::HashMap<String, String> = std::collections::HashMap::new();
-        for (_, addr, class, _, _, _) in q_icons.iter() {
-            address_to_class.insert(addr.0.clone(), class.0.clone());
+        // dock_order is the source of truth: drags, pins and window events edit
+        // it in place. Only drop addresses without an icon and append icons that
+        // are missing; query iteration order is arbitrary (it changes whenever an
+        // entity moves between archetypes), so it is just a fallback.
+        let mut new_order: Vec<String> = Vec::new();
+        for address in &dock_order.0 {
+            if !new_order.contains(address)
+                && q_icons.iter().any(|(_, addr, _, _, _, _)| addr.0 == *address)
+            {
+                new_order.push(address.clone());
+            }
         }
-        
-        // First, add favorites in order
-        for fav_class in &favorites.0 {
-            // Find the address for this favorite class
-            if let Some((_, addr, _, _, _, _)) = q_icons.iter().find(|(_, _, class, _, _, _)| &class.0 == fav_class) {
+        for (_, addr, _, _, _, _) in q_icons.iter() {
+            if !new_order.contains(&addr.0) {
                 new_order.push(addr.0.clone());
             }
         }
-        
-        // Then, add non-favorites
-        for (_, addr, _, _, _, favorite_opt) in q_icons.iter() {
-            if favorite_opt.is_none() && !new_order.contains(&addr.0) {
-                non_favorite_addresses.push(addr.0.clone());
+
+        // Favorites are saved in dock order so pinned apps reopen where they were.
+        let mut saved_favorites: Vec<String> = Vec::new();
+        for address in &new_order {
+            if let Some((_, _, class, _, _, _)) =
+                q_icons.iter().find(|(_, addr, _, _, _, _)| addr.0 == *address)
+            {
+                if favorites.0.contains(&class.0) && !saved_favorites.contains(&class.0) {
+                    saved_favorites.push(class.0.clone());
+                }
             }
         }
-        
-        new_order.extend(non_favorite_addresses);
+        for class in &favorites.0 {
+            if !saved_favorites.contains(class) {
+                saved_favorites.push(class.clone());
+            }
+        }
+        if saved_favorites != favorites.0 {
+            favorites.0 = saved_favorites;
+        }
+
         dock_order.0 = new_order;
     }
     
@@ -106,6 +118,14 @@ pub fn reorder_icons_system(
 
     reorder_trigger.0 = false;
 }
+/// Persists favorites whose order changed without going through
+/// `toggle_favorite` (which saves on its own), e.g. after a drag.
+pub fn persist_favorites_system(favorites: Res<Favorites>) {
+    if favorites.is_changed() && !favorites.is_added() {
+        save_favorites(&favorites);
+    }
+}
+
 fn lerp(start: f32, end: f32, t: f32) -> f32 {
     start + (end - start) * t
 }

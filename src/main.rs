@@ -91,6 +91,7 @@ fn main() {
                 drag_check_system,
                 drag_update_system,
                 drag_end_system.in_set(StateUpdate),
+                persist_favorites_system,
                 reset_positions_system,
                 reorder_icons_system.in_set(ReorderIcons),
                 process_hyprland_events,
@@ -296,7 +297,7 @@ fn toggle_favorite(
                     }
                 }
             }
-            // Reorder will be triggered and will move this to non-favorites section
+            // The icon keeps its place in the dock; only the pin goes away
         } else {
             // App is not running, it only exists because it was a favorite.
             // Despawn the whole thing.
@@ -314,7 +315,7 @@ fn toggle_favorite(
         }
         add_favorite(commands, entity, images, config);
         
-        // Trigger full reorder to place favorites correctly
+        // The icon keeps its place; reorder syncs the saved favorites order
         reorder_trigger.0 = true;
     }
     save_favorites(favorites);

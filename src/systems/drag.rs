@@ -160,3 +160,150 @@ pub fn reset_positions_system(
         }
     }
 } 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::components::{Favorite, Favorites};
+    use crate::systems::reorder_icons_system;
+    use crate::utils::calculate_icon_transform;
+
+    fn icon_positions(app: &mut App, count: usize) -> Vec<Vec3> {
+        let config = app.world.resource::<Config>().clone();
+        let mut q_window = app.world.query_filtered::<&Window, With<PrimaryWindow>>();
+        let window = q_window.single(&app.world);
+        let start_pos = Vec2::new(
+            -window.width() / 2.0 + config.margin_x,
+            -window.height() / 2.0 + config.margin_y,
+        );
+        let center = Vec2::new(0.0, window.height() * config.tilt_y);
+        let direction = (center - start_pos).normalize_or_zero();
+        (0..count)
+            .map(|i| calculate_icon_transform(i, start_pos, direction, &config, Vec2::ZERO).0)
+            .collect()
+    }
+
+    /// Spawns one icon per class, laid out in dock order; classes listed in
+    /// `favorites` get the `Favorite` component.
+    fn dock_app(classes: &[&str], favorites: &[&str]) -> (App, Vec<Entity>) {
+        let mut app = App::new();
+        app.insert_resource(Config::default())
+            .insert_resource(Input::<MouseButton>::default())
+            .insert_resource(UiState::default())
+            .insert_resource(ReorderTrigger::default())
+            .insert_resource(ScrollState::default())
+            .insert_resource(Favorites(favorites.iter().map(|f| f.to_string()).collect()))
+            .insert_resource(DockOrder(classes.iter().map(|c| format!("addr-{c}")).collect()))
+            .add_systems(Update, (drag_end_system, reorder_icons_system).chain());
+        app.world.spawn((Window::default(), PrimaryWindow));
+
+        let positions = icon_positions(&mut app, classes.len());
+        let entities = classes
+            .iter()
+            .zip(positions)
+            .enumerate()
+            .map(|(index, (class, translation))| {
+                let mut icon = app.world.spawn((
+                    ClientAddress(format!("addr-{class}")),
+                    ClientClass(class.to_string()),
+                    Transform::from_translation(translation),
+                    HoverTarget {
+                        original_position: translation.truncate(),
+                        original_z: translation.z,
+                        original_scale: 1.0,
+                        index,
+                        is_hovered: false,
+                        hover_exit_timer: None,
+                    },
+                ));
+                if favorites.contains(class) {
+                    icon.insert(Favorite);
+                }
+                icon.id()
+            })
+            .collect();
+        (app, entities)
+    }
+
+    /// Drops `dragged` halfway between the icons currently at `before` and `after`.
+    fn drop_between(app: &mut App, dragged: Entity, before: Entity, after: Entity) {
+        let x_before = app.world.get::<Transform>(before).unwrap().translation.x;
+        let x_after = app.world.get::<Transform>(after).unwrap().translation.x;
+        app.world.get_mut::<Transform>(dragged).unwrap().translation.x = (x_before + x_after) / 2.0;
+        app.world.entity_mut(dragged).insert(Dragging { offset: Vec2::ZERO });
+        app.world.resource_mut::<UiState>().dragging = Some(dragged);
+
+        let mut mouse = app.world.resource_mut::<Input<MouseButton>>();
+        mouse.press(MouseButton::Left);
+        mouse.release(MouseButton::Left);
+        app.update();
+    }
+
+    fn dock_order(app: &App) -> Vec<String> {
+        app.world.resource::<DockOrder>().0.clone()
+    }
+
+    #[test]
+    fn dropped_icon_lands_where_released() {
+        let (mut app, icons) = dock_app(&["a", "b", "c", "d"], &[]);
+
+        drop_between(&mut app, icons[3], icons[0], icons[1]);
+
+        assert_eq!(dock_order(&app), ["addr-a", "addr-d", "addr-b", "addr-c"]);
+    }
+
+    #[test]
+    fn dropped_favorite_lands_where_released() {
+        let (mut app, icons) = dock_app(&["f1", "f2", "f3", "x"], &["f1", "f2", "f3"]);
+
+        drop_between(&mut app, icons[2], icons[0], icons[1]);
+
+        assert_eq!(dock_order(&app), ["addr-f1", "addr-f3", "addr-f2", "addr-x"]);
+        assert_eq!(app.world.resource::<Favorites>().0, ["f1", "f3", "f2"]);
+    }
+
+    #[test]
+    fn non_favorite_can_be_dropped_between_favorites() {
+        let (mut app, icons) = dock_app(&["f1", "f2", "x"], &["f1", "f2"]);
+
+        drop_between(&mut app, icons[2], icons[0], icons[1]);
+
+        assert_eq!(dock_order(&app), ["addr-f1", "addr-x", "addr-f2"]);
+        assert_eq!(app.world.resource::<Favorites>().0, ["f1", "f2"]);
+    }
+
+    #[test]
+    fn favorite_can_be_dropped_after_non_favorites() {
+        let (mut app, icons) = dock_app(&["f1", "f2", "a", "b"], &["f1", "f2"]);
+
+        drop_between(&mut app, icons[0], icons[2], icons[3]);
+
+        assert_eq!(dock_order(&app), ["addr-f2", "addr-a", "addr-f1", "addr-b"]);
+        assert_eq!(app.world.resource::<Favorites>().0, ["f2", "f1"]);
+    }
+
+    #[test]
+    fn pinning_keeps_icon_in_place() {
+        let (mut app, icons) = dock_app(&["a", "b", "c"], &[]);
+
+        // What toggle_favorite does when pinning `c`.
+        app.world.entity_mut(icons[2]).insert(Favorite);
+        app.world.resource_mut::<Favorites>().0.push("c".to_string());
+        app.world.resource_mut::<ReorderTrigger>().0 = true;
+        app.update();
+
+        assert_eq!(dock_order(&app), ["addr-a", "addr-b", "addr-c"]);
+    }
+
+    #[test]
+    fn saved_favorites_follow_dock_order() {
+        // `c` was pinned before `a`, but `a` comes first in the dock.
+        let (mut app, _icons) = dock_app(&["a", "b", "c"], &["c", "a"]);
+
+        app.world.resource_mut::<ReorderTrigger>().0 = true;
+        app.update();
+
+        assert_eq!(dock_order(&app), ["addr-a", "addr-b", "addr-c"]);
+        assert_eq!(app.world.resource::<Favorites>().0, ["a", "c"]);
+    }
+}
