@@ -8,7 +8,6 @@ mod config;
 use bevy::prelude::*;
 use bevy::render::texture::Image;
 use bevy::window::{PrimaryWindow, Window, WindowPlugin};
-use bevy_embedded_assets::EmbeddedAssetPlugin;
 use bevy_svg::SvgPlugin;
 
 use components::{
@@ -40,7 +39,6 @@ fn main() {
     App::new()
         
         .insert_resource(Msaa::Sample4)
-        .add_plugins(EmbeddedAssetPlugin::default())
         .add_plugins(
             DefaultPlugins
                 .set(WindowPlugin {
