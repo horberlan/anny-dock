@@ -1,5 +1,6 @@
 mod components;
 mod icon;
+mod layer_shell;
 mod systems;
 mod types;
 mod utils;
@@ -8,6 +9,7 @@ mod config;
 use bevy::prelude::*;
 use bevy::render::texture::Image;
 use bevy::window::{PrimaryWindow, Window, WindowPlugin};
+use bevy::winit::WinitPlugin;
 use bevy_svg::SvgPlugin;
 
 use components::{
@@ -22,6 +24,7 @@ use utils::{
     save_favorites, update_sprite_alpha, IconAnimationState,
 };
 use config::{load_config, Config};
+use layer_shell::{update_input_region_system, LayerShellBackend};
 
 use std::env;
 use std::io::{BufRead, BufReader};
@@ -36,24 +39,39 @@ fn main() {
     let client_list = load_clients();
     let favorites = load_favorites();
 
-    App::new()
-        
-        .insert_resource(Msaa::Sample4)
-        .add_plugins(
-            DefaultPlugins
-                .set(WindowPlugin {
-                    primary_window: Some(Window {
-                        transparent: true,
-                        decorations: false,
-                        ..default()
-                    }),
-                    ..default()
-                })
-                .set(ImagePlugin {
-                    default_sampler: bevy::render::texture::ImageSamplerDescriptor::linear(),
-                    ..default()
-                }),
-        )
+    // A layer surface (wlr-layer-shell) unless forced off or unsupported, in
+    // which case the dock falls back to a regular winit window.
+    let layer_shell = if env::var_os("ANNY_DOCK_WINDOWED").is_some() {
+        Err("ANNY_DOCK_WINDOWED is set".to_string())
+    } else {
+        LayerShellBackend::connect()
+    };
+
+    let mut app = App::new();
+    let layer_window = layer_shell
+        .as_ref()
+        .ok()
+        .map(|backend| backend.spawn_window(&mut app.world));
+    let primary_window = layer_window.is_none().then(|| Window {
+        transparent: true,
+        decorations: false,
+        ..default()
+    });
+    let mut plugins = DefaultPlugins
+        .set(WindowPlugin {
+            primary_window,
+            ..default()
+        })
+        .set(ImagePlugin {
+            default_sampler: bevy::render::texture::ImageSamplerDescriptor::linear(),
+            ..default()
+        });
+    if layer_window.is_some() {
+        plugins = plugins.disable::<WinitPlugin>();
+    }
+
+    app.insert_resource(Msaa::Sample4)
+        .add_plugins(plugins)
         .add_plugins(SvgPlugin)
         .insert_resource(ClearColor(Color::NONE))
         .insert_resource(ClientList(client_list))
@@ -101,10 +119,20 @@ fn main() {
                 reorder_icons_system.in_set(ReorderIcons),
                 process_hyprland_events,
                 keybind_launch_visible_icons,
+                update_input_region_system,
             )
                 .chain(),
-        )
-        .run();
+        );
+
+    match (layer_shell, layer_window) {
+        (Ok(backend), Some(window)) => {
+            info!("Running as a layer surface");
+            backend.install(&mut app, window);
+        }
+        (Err(reason), _) => warn!("Layer shell unavailable ({reason}); running as a window"),
+        _ => {}
+    }
+    app.run();
 }
 
 fn setup(

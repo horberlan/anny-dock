@@ -33,6 +33,11 @@ tracing = "0.1"
 regex = "1"
 lru = "0.12"
 thiserror = "1"
+# wlr-layer-shell backend (src/layer_shell/); winit has no layer-shell support.
+smithay-client-toolkit = "0.18"
+wayland-client = "0.31"
+wayland-backend = { version = "0.3", features = ["client_system"] }
+raw-window-handle = "0.5"
 
 [dev-dependencies]
 tempfile = "3"
