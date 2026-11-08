@@ -8,6 +8,8 @@ repository = "https://github.com/horberlan/anny-dock"
 license = "MIT"
 keywords = ["dock", "bevy", "hyprland", "animated"]
 authors = ["pois.nada"]
+# Assistant context; it points to .context/, which is not in the repository.
+exclude = ["CLAUDE.md"]
 
 [package.metadata.bundle]
 resources = ["assets"]
