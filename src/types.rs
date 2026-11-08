@@ -86,10 +86,15 @@ pub struct DockOrder(pub Vec<String>);
 #[derive(Event)]
 pub struct IconRemovedEvent;
 
+/// Scroll measured in icons: the icon at index `position` sits in the first
+/// slot. Inputs move `target`; `scroll_smoothing_system` eases `position` there.
 #[derive(Resource, Default)]
 pub struct ScrollState {
-    pub offset: Vec2,
-    pub total_scroll_distance: f32,
+    pub position: f32,
+    pub target: f32,
+    /// Seconds since the last wheel or drag-autoscroll input; once it passes a
+    /// short delay the target snaps to a whole icon.
+    pub idle: f32,
 }
 
 

@@ -2,45 +2,32 @@ use bevy::app::AppExit;
 use bevy::input::keyboard::KeyboardInput;
 use bevy::input::ButtonState;
 use bevy::prelude::*;
-use bevy::window::PrimaryWindow;
 use crate::{focus_client, types::*};
 use crate::config::Config;
 use crate::utils::launch_application;
+use super::{max_scroll, KeyRepeat};
 
+/// Left/Right move one icon per press and repeat while held; repeated presses
+/// accumulate on the target, and `scroll_smoothing_system` animates the move.
 pub fn scroll_with_arrows(
     keyboard: Res<Input<KeyCode>>,
     mut scroll_state: ResMut<ScrollState>,
-    q_icons: Query<&HoverTarget>,
+    dock_order: Res<DockOrder>,
     config: Res<Config>,
-    windows: Query<&Window, With<PrimaryWindow>>,
+    time: Res<Time>,
+    mut repeat: Local<(KeyRepeat, KeyRepeat)>,
 ) {
-    let total_items = q_icons.iter().count();
-    if total_items <= config.visible_items {
+    let dt = time.delta_seconds();
+    let back = repeat.0.steps(keyboard.just_pressed(KeyCode::Left), keyboard.pressed(KeyCode::Left), dt);
+    let forward =
+        repeat.1.steps(keyboard.just_pressed(KeyCode::Right), keyboard.pressed(KeyCode::Right), dt);
+    if back == forward {
         return;
     }
 
-    let scroll_amount = config.scroll_speed;
-
-    if keyboard.just_pressed(KeyCode::Left) {
-        scroll_state.total_scroll_distance -= scroll_amount;
-    }
-    if keyboard.just_pressed(KeyCode::Right) {
-        scroll_state.total_scroll_distance += scroll_amount;
-    }
-
-    let max_scroll = ((total_items as f32 - config.visible_items as f32).max(0.0)) * config.spacing;
-    scroll_state.total_scroll_distance = scroll_state.total_scroll_distance.clamp(0.0, max_scroll);
-
-    let window = windows.single();
-    let window_width = window.width();
-    let window_height = window.height();
-    let start_x = -window_width / 2.0 + config.margin_x;
-    let start_y = -window_height / 2.0 + config.margin_y;
-    let start_pos = Vec2::new(start_x, start_y);
-    let center = Vec2::new(0.0, window_height * config.tilt_y);
-    let direction = (center - start_pos).normalize_or_zero();
-
-    scroll_state.offset = direction * scroll_state.total_scroll_distance;
+    let max = max_scroll(dock_order.0.len(), config.visible_items);
+    let target = scroll_state.target.round() + forward as f32 - back as f32;
+    scroll_state.target = target.clamp(0.0, max);
 }
 
 pub fn keybind_launch_visible_icons(
@@ -62,7 +49,7 @@ pub fn keybind_launch_visible_icons(
         KeyCode::Key0,
     ];
 
-    let first_visible_index = (scroll_state.total_scroll_distance / config.spacing).floor() as usize;
+    let first_visible_index = scroll_state.target.round().max(0.0) as usize;
 
     for (i, &key) in keycodes.iter().enumerate().take(config.visible_items) {
         if keyboard.just_pressed(key) {

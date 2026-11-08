@@ -8,11 +8,10 @@ use bevy::window::PrimaryWindow;
 use bevy::time::Timer;
 use std::time::Duration;
 
-use crate::{config::Config, types::*};
+use crate::{config::Config, types::*, utils::front_boost};
 
 const HOVER_LIFT: f32 = 15.0;
 const HOVER_SCALE: f32 = 1.15;
-const ANIMATION_SMOOTHNESS: f32 = 0.85;
 
 pub fn hover_system(
     windows: Query<&Window, With<PrimaryWindow>>,
@@ -104,84 +103,40 @@ impl Default for HoverState {
     }
 }
 
+/// Rate (1/s) at which icons follow their slot, scale and hover lift.
+const ICON_SMOOTHING: f32 = 18.0;
+
+/// The only system that animates icon transforms: eases every icon except the
+/// dragged one toward the slot `reorder_icons_system` assigned, with the hover
+/// lift and scale on top, so reorders, scrolling and hover blend smoothly.
 pub fn hover_animation_system(
     time: Res<Time>,
-    mut q: Query<(
-        &mut Transform,
-        &HoverTarget,
-        &mut HoverState,
-    ), Without<Dragging>>,
+    mut q: Query<(&mut Transform, &HoverTarget, &mut HoverState), Without<Dragging>>,
     ui_state: Res<UiState>,
     scroll_state: Res<ScrollState>,
-    config: Res<Config>,
 ) {
-    if ui_state.dragging.is_some() {
-        return;
-    }
-
-    let delta_time = time.delta_seconds();
-
-    let scroll = scroll_state.total_scroll_distance / config.spacing;    let first_visible_index = scroll.floor() as usize;
-    let interp = scroll - scroll.floor();
-
-    let mut scales = vec![1.0; config.visible_items];
-    for i in 0..config.visible_items {
-        if i == 0 {
-            scales[i] = 1.2 - 0.2 * interp as f32;
-        } else if i == 1 {
-            scales[i] = 1.0 + 0.2 * interp as f32;
-        } else {
-            scales[i] = 1.0;
-        }
-    }
-
-    let sum: f32 = scales.iter().sum();
-    let norm = config.visible_items as f32 / sum;
-    for s in &mut scales {
-        *s *= norm;
-    }
+    let follow = 1.0 - (-ICON_SMOOTHING * time.delta_seconds()).exp();
+    // While an icon is dragged the others only make room, without hover effects.
+    let dragging = ui_state.dragging.is_some();
 
     for (mut transform, hover, mut state) in &mut q {
-        let base_scale = config.base_scale * config.scale_factor.powi(hover.index as i32);
+        let hovered = hover.is_hovered && !dragging && hover.original_scale > 0.0;
+        let slot = hover.index as f32 - scroll_state.position;
+        state.target_scale = if hovered {
+            hover.original_scale / front_boost(slot) * HOVER_SCALE
+        } else {
+            hover.original_scale
+        };
+        state.target_lift = if hovered { HOVER_LIFT } else { 0.0 };
+        state.current_lift += (state.target_lift - state.current_lift) * follow;
+        state.current_scale += (state.target_scale - state.current_scale) * follow;
 
-        let in_window = hover.index >= first_visible_index
-            && hover.index < first_visible_index + config.visible_items;
-
-        let mut target_scale = 0.0;
-        let mut z_offset = 0.0;
-
-        if in_window {
-            let rel_idx = hover.index - first_visible_index;
-            target_scale = base_scale * scales[rel_idx];
-
-            z_offset = rel_idx as f32 * 10.0;
-
-            if rel_idx == 0 {
-                z_offset = 0.0 + 10.0 * interp as f32;
-            } else if rel_idx == 1 {
-                z_offset = 10.0 * (1.0 - interp as f32) + 20.0 * interp as f32;
-            }
-        }
-
-        if hover.is_hovered && in_window {
-            target_scale = base_scale * HOVER_SCALE;
-        }
-
-        state.target_scale = target_scale;
-        state.target_lift = if hover.is_hovered && in_window { HOVER_LIFT } else { 0.0 };
-
-        state.current_lift += (state.target_lift - state.current_lift)
-            * (1.0 - ANIMATION_SMOOTHNESS.powf(delta_time * 60.0));
-
-        state.current_scale += (state.target_scale - state.current_scale)
-            * (1.0 - ANIMATION_SMOOTHNESS.powf(delta_time * 60.0));
-
-        transform.translation = Vec3::new(
+        let target = Vec2::new(
             hover.original_position.x,
             hover.original_position.y + state.current_lift,
-            hover.original_z - z_offset,
         );
-
+        let current = transform.translation.truncate();
+        transform.translation = (current + (target - current) * follow).extend(hover.original_z);
         transform.scale = Vec3::splat(state.current_scale);
     }
 }

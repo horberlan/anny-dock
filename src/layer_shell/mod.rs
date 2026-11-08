@@ -6,6 +6,7 @@
 //! runner pumps Wayland events into the same Bevy events bevy_winit emits.
 
 mod input;
+mod options;
 mod region;
 mod wayland;
 
@@ -28,15 +29,17 @@ use smithay_client_toolkit::{
     output::OutputState,
     registry::RegistryState,
     seat::SeatState,
+    shm::Shm,
     shell::{
-        wlr_layer::{Anchor, KeyboardInteractivity, Layer, LayerShell},
+        wlr_layer::{Anchor, LayerShell},
         WaylandSurface,
     },
 };
 use wayland_client::{globals::registry_queue_init, Connection, EventQueue, Proxy};
 
-use crate::config::Config;
+use crate::config::{Config, LayerShellConfig};
 use crate::types::HoverTarget;
+use options::pick_output;
 use region::icon_input_rects;
 use wayland::{InputEvent, WaylandState};
 
@@ -51,13 +54,14 @@ pub struct LayerShellBackend {
     conn: Connection,
     queue: EventQueue<WaylandState>,
     state: WaylandState,
-    compositor: CompositorState,
+    /// Raised before Bevy's logger exists; logged on `install`.
+    warnings: Vec<String>,
 }
 
 impl LayerShellBackend {
     /// Creates the layer surface and waits for its first configure. Fails when
     /// there is no Wayland compositor or it lacks `zwlr_layer_shell_v1`.
-    pub fn connect() -> Result<Self, String> {
+    pub fn connect(config: &LayerShellConfig) -> Result<Self, String> {
         let conn = Connection::connect_to_env().map_err(|e| format!("no Wayland display: {e}"))?;
         let (globals, mut queue) =
             registry_queue_init::<WaylandState>(&conn).map_err(|e| e.to_string())?;
@@ -66,24 +70,15 @@ impl LayerShellBackend {
         let layer_shell = LayerShell::bind(&globals, &qh)
             .map_err(|e| format!("zwlr_layer_shell_v1 unavailable: {e}"))?;
 
-        let surface = compositor.create_surface(&qh);
-        let layer = layer_shell.create_layer_surface(&qh, surface, Layer::Top, Some(NAMESPACE), None);
-        // Anchored to every edge with size 0: the compositor sizes it to the
-        // output's usable area, so the dock keeps laying out in full-screen
-        // coordinates.
-        layer.set_anchor(Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT);
-        layer.set_size(0, 0);
-        layer.set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
-        // Click-through until the first frame computes the icon rects.
-        let region = Region::new(&compositor).map_err(|e| e.to_string())?;
-        layer.wl_surface().set_input_region(Some(region.wl_region()));
-        layer.commit();
+        let shm = Shm::bind(&globals, &qh).map_err(|e| format!("wl_shm unavailable: {e}"))?;
 
         let mut state = WaylandState {
             registry: RegistryState::new(&globals),
+            compositor,
+            shm,
             seat: SeatState::new(&globals, &qh),
             output: OutputState::new(&globals, &qh),
-            layer,
+            layer: None,
             keyboard: None,
             pointer: None,
             configured_size: None,
@@ -91,6 +86,40 @@ impl LayerShellBackend {
             closed: false,
             pending: Vec::new(),
         };
+        // Output names arrive in the events answering the binds above.
+        queue.roundtrip(&mut state).map_err(|e| e.to_string())?;
+
+        let mut warnings = Vec::new();
+        let outputs = state
+            .output
+            .outputs()
+            .map(|output| (state.output.info(&output).and_then(|info| info.name), output))
+            .collect();
+        let output = pick_output(outputs, &config.output).unwrap_or_else(|e| {
+            warnings.push(format!("{e}; letting the compositor choose"));
+            None
+        });
+
+        let surface = state.compositor.create_surface(&qh);
+        let layer = layer_shell.create_layer_surface(
+            &qh,
+            surface,
+            options::layer(config.layer),
+            Some(NAMESPACE),
+            output.as_ref(),
+        );
+        // Anchored to every edge with size 0: the compositor sizes it to the
+        // output's usable area, so the dock keeps laying out in full-screen
+        // coordinates.
+        layer.set_anchor(Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT);
+        layer.set_size(0, 0);
+        layer.set_keyboard_interactivity(options::keyboard(config.keyboard));
+        // Click-through until the first frame computes the icon rects.
+        let region = Region::new(&state.compositor).map_err(|e| e.to_string())?;
+        layer.wl_surface().set_input_region(Some(region.wl_region()));
+        layer.commit();
+        state.layer = Some(layer);
+
         // Presenting before the first configure is a protocol error.
         while state.configured_size.is_none() && !state.closed {
             queue.blocking_dispatch(&mut state).map_err(|e| e.to_string())?;
@@ -99,7 +128,7 @@ impl LayerShellBackend {
             return Err("layer surface closed by the compositor".into());
         }
 
-        Ok(Self { conn, queue, state, compositor })
+        Ok(Self { conn, queue, state, warnings })
     }
 
     /// Spawns the primary window backed by the layer surface. Must run before
@@ -109,7 +138,7 @@ impl LayerShellBackend {
         let (width, height) = self.state.configured_size.unwrap_or_default();
 
         let mut window_handle = WaylandWindowHandle::empty();
-        window_handle.surface = self.state.layer.wl_surface().id().as_ptr() as *mut c_void;
+        window_handle.surface = self.state.surface().id().as_ptr() as *mut c_void;
         let mut display_handle = WaylandDisplayHandle::empty();
         display_handle.display = self.conn.backend().display_ptr() as *mut c_void;
 
@@ -134,6 +163,9 @@ impl LayerShellBackend {
 
     /// Replaces the winit runner with one driven by the Wayland connection.
     pub fn install(self, app: &mut App, window: Entity) {
+        for warning in &self.warnings {
+            warn!("{warning}");
+        }
         app.init_resource::<InputRegion>()
             .set_runner(move |app| self.run(app, window));
     }
@@ -169,7 +201,7 @@ impl LayerShellBackend {
             if resized.is_some() || rescaled.is_some() {
                 logical_size = resized.unwrap_or(logical_size);
                 scale = rescaled.unwrap_or(scale).max(1);
-                self.state.layer.wl_surface().set_buffer_scale(scale);
+                self.state.surface().set_buffer_scale(scale);
                 if let Some(mut win) = app.world.get_mut::<Window>(window) {
                     win.resolution.set_scale_factor(scale as f64);
                     win.resolution.set_physical_resolution(
@@ -187,11 +219,11 @@ impl LayerShellBackend {
             // Double-buffered: applied by the commit of the next presented frame.
             let region = &app.world.resource::<InputRegion>().0;
             if applied_region.as_ref() != Some(region) {
-                if let Ok(wl_region) = Region::new(&self.compositor) {
+                if let Ok(wl_region) = Region::new(&self.state.compositor) {
                     for rect in region {
                         wl_region.add(rect.min.x, rect.min.y, rect.width(), rect.height());
                     }
-                    self.state.layer.wl_surface().set_input_region(Some(wl_region.wl_region()));
+                    self.state.surface().set_input_region(Some(wl_region.wl_region()));
                     debug!("Input region: {region:?}");
                     applied_region = Some(region.clone());
                 }

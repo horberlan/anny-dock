@@ -116,6 +116,40 @@ fn save_favorites_to(path: &Path, favorites: &Favorites) {
     }
 }
 
+/// Dock order (one class per icon) from the last session. It is session state,
+/// not configuration, so it lives under XDG_STATE_HOME (~/.local/state).
+fn dock_order_path() -> Option<PathBuf> {
+    Some(dirs::state_dir()?.join("anny-dock").join("order.json"))
+}
+
+pub fn load_dock_order() -> Vec<String> {
+    dock_order_path().map(|path| load_dock_order_from(&path)).unwrap_or_default()
+}
+
+pub fn save_dock_order(order: &[String]) {
+    if let Some(path) = dock_order_path() {
+        save_dock_order_to(&path, order);
+    }
+}
+
+fn load_dock_order_from(path: &Path) -> Vec<String> {
+    fs::read_to_string(path)
+        .ok()
+        .and_then(|data| serde_json::from_str(&data).ok())
+        .unwrap_or_default()
+}
+
+fn save_dock_order_to(path: &Path, order: &[String]) {
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    if let Ok(json) = serde_json::to_string(order) {
+        if let Err(e) = fs::write(path, json) {
+            warn!("Failed to save dock order to {:?}: {:?}", path, e);
+        }
+    }
+}
+
 pub fn get_icon_path(class: &str) -> String {
     let lowercase = class.to_lowercase();
     match icon_finder::find_icon(lowercase, 56, 1) {
@@ -296,6 +330,27 @@ mod tests {
         save_favorites_to(&legacy, &favorites(&["legacy"]));
 
         assert!(load_favorites_from(&path, &legacy).0.is_empty());
+    }
+
+    #[test]
+    fn dock_order_round_trips() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state/order.json");
+        let order = vec!["kitty".to_string(), "firefox".to_string(), "kitty".to_string()];
+
+        save_dock_order_to(&path, &order);
+
+        assert_eq!(load_dock_order_from(&path), order);
+    }
+
+    #[test]
+    fn missing_or_invalid_dock_order_is_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("order.json");
+        assert!(load_dock_order_from(&path).is_empty());
+
+        std::fs::write(&path, "{not json").unwrap();
+        assert!(load_dock_order_from(&path).is_empty());
     }
 
     #[test]

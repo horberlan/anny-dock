@@ -3,6 +3,7 @@ use bevy::window::PrimaryWindow;
 use crate::types::*;
 use crate::config::Config;
 use crate::utils::{calculate_icon_transform, dock_axis};
+use super::{edge_scroll_velocity, max_scroll};
 
 pub fn drag_register_click_system(
     windows: Query<&Window, With<PrimaryWindow>>,
@@ -83,14 +84,55 @@ pub fn drag_update_system(
                             transform.translation =
                                 Vec3::new(new_pos.x, new_pos.y, hover.original_z + 10.0);
 
-                            let base_scale = config.base_scale * config.scale_factor.powi(hover.index as i32);
-                            transform.scale = Vec3::splat(base_scale * 1.1);
+                            // Same lifted size wherever the icon came from.
+                            transform.scale = Vec3::splat(config.base_scale * 1.1);
                         }
                     }
                 }
             }
         }
     }
+}
+
+/// Autoscroll speed (icons/s) once the dragged icon is a full icon past the
+/// first or last visible slot.
+const AUTOSCROLL_MAX_SPEED: f32 = 8.0;
+
+/// Scrolls the dock while an icon is dragged past either end of the visible
+/// slots, faster the further past it is, so it can be dropped anywhere.
+pub fn drag_autoscroll_system(
+    ui_state: Res<UiState>,
+    q_icons: Query<&Transform>,
+    windows: Query<&Window, With<PrimaryWindow>>,
+    mut scroll_state: ResMut<ScrollState>,
+    dock_order: Res<DockOrder>,
+    config: Res<Config>,
+    time: Res<Time>,
+) {
+    let Some(dragged) = ui_state.dragging else {
+        return;
+    };
+    let (Ok(transform), Ok(window)) = (q_icons.get(dragged), windows.get_single()) else {
+        return;
+    };
+
+    let (start_pos, direction) = dock_axis(window, &config);
+    let along = |position: Vec2| (position - start_pos).dot(direction);
+    let last_slot = config.visible_items.saturating_sub(1) as f32;
+    let (end, _) = calculate_icon_transform(last_slot, start_pos, direction, &config);
+    let velocity = edge_scroll_velocity(
+        along(transform.translation.truncate()),
+        along(end.truncate()),
+        config.icon_size * config.base_scale,
+        AUTOSCROLL_MAX_SPEED,
+    );
+    if velocity == 0.0 {
+        return;
+    }
+
+    let max = max_scroll(dock_order.0.len(), config.visible_items);
+    scroll_state.target = (scroll_state.target + velocity * time.delta_seconds()).clamp(0.0, max);
+    scroll_state.idle = 0.0;
 }
 
 /// Extra distance, as a fraction of the gap between two slots, the dragged icon
@@ -148,7 +190,7 @@ pub fn drag_preview_system(
     let slots: Vec<f32> = (0..=new_order.len())
         .map(|index| {
             let (translation, _) =
-                calculate_icon_transform(index, start_pos, direction, &config, scroll_state.offset);
+                calculate_icon_transform(index as f32 - scroll_state.position, start_pos, direction, &config);
             along(translation.truncate())
         })
         .collect();
@@ -207,7 +249,7 @@ pub fn reset_positions_system(
 mod tests {
     use super::*;
     use crate::components::{Favorite, Favorites};
-    use crate::systems::{exit_on_esc_or_q, reorder_icons_system};
+    use crate::systems::{exit_on_esc_or_q, reorder_icons_system, scroll_smoothing_system};
     use bevy::app::AppExit;
     use bevy::input::keyboard::KeyboardInput;
     use bevy::input::ButtonState;
@@ -223,7 +265,7 @@ mod tests {
         let center = Vec2::new(0.0, window.height() * config.tilt_y);
         let direction = (center - start_pos).normalize_or_zero();
         (0..count)
-            .map(|i| calculate_icon_transform(i, start_pos, direction, &config, Vec2::ZERO).0)
+            .map(|i| calculate_icon_transform(i as f32, start_pos, direction, &config).0)
             .collect()
     }
 
@@ -240,16 +282,19 @@ mod tests {
             .insert_resource(DockOrder(classes.iter().map(|c| format!("addr-{c}")).collect()))
             .insert_resource(Input::<KeyCode>::default())
             .insert_resource(DragPreview::default())
+            .init_resource::<Time>()
             .add_event::<KeyboardInput>()
             .add_event::<AppExit>()
             // Same relative order as the chain in main.rs.
             .add_systems(
                 Update,
                 (
+                    drag_autoscroll_system,
                     drag_preview_system,
                     drag_end_system,
                     exit_on_esc_or_q,
                     reset_positions_system,
+                    scroll_smoothing_system,
                     reorder_icons_system,
                 )
                     .chain(),
@@ -395,6 +440,44 @@ mod tests {
 
         let translation = app.world.get::<Transform>(icons[2]).unwrap().translation;
         assert_eq!(translation.truncate(), target.truncate());
+    }
+
+    #[test]
+    fn dragging_past_the_last_visible_icon_scrolls_the_dock() {
+        let classes: Vec<String> = (0..12).map(|i| format!("app{i}")).collect();
+        let classes: Vec<&str> = classes.iter().map(String::as_str).collect();
+        let (mut app, icons) = dock_app(&classes, &[]);
+        let visible = app.world.resource::<Config>().visible_items;
+        let beyond_end = slots(&mut app)[visible + 1];
+
+        drag_to(&mut app, icons[2], beyond_end);
+        for _ in 0..30 {
+            app.world
+                .resource_mut::<Time>()
+                .advance_by(std::time::Duration::from_secs_f32(1.0 / 60.0));
+            app.update();
+        }
+
+        let scroll = app.world.resource::<ScrollState>();
+        assert!(scroll.target > 0.0, "target {}", scroll.target);
+        assert!(scroll.position > 0.0, "position {}", scroll.position);
+        let dropped_at = dock_order(&app).iter().position(|a| a == "addr-app2").unwrap();
+        assert!(dropped_at > visible - 1, "preview follows the scroll: slot {dropped_at}");
+    }
+
+    #[test]
+    fn dragging_inside_the_visible_icons_does_not_scroll() {
+        let classes: Vec<String> = (0..12).map(|i| format!("app{i}")).collect();
+        let classes: Vec<&str> = classes.iter().map(String::as_str).collect();
+        let (mut app, icons) = dock_app(&classes, &[]);
+
+        drag_to_slot(&mut app, icons[0], 3);
+        app.world
+            .resource_mut::<Time>()
+            .advance_by(std::time::Duration::from_secs_f32(0.5));
+        app.update();
+
+        assert_eq!(app.world.resource::<ScrollState>().target, 0.0);
     }
 
     #[test]

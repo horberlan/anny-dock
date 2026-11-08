@@ -20,7 +20,8 @@ use std::process::Command;
 use types::*;
 use utils::hover::{hover_animation_system, hover_system};
 use utils::{
-    calculate_icon_transform, launch_application, load_clients, load_favorites, parse_hypr_event,
+    calculate_icon_transform, initial_dock_entries, launch_application, load_clients, load_dock_order,
+    load_favorites, parse_hypr_event,
     save_favorites, update_sprite_alpha, IconAnimationState,
 };
 use config::{load_config, Config};
@@ -44,7 +45,7 @@ fn main() {
     let layer_shell = if env::var_os("ANNY_DOCK_WINDOWED").is_some() {
         Err("ANNY_DOCK_WINDOWED is set".to_string())
     } else {
-        LayerShellBackend::connect()
+        LayerShellBackend::connect(&config.layer_shell)
     };
 
     let mut app = App::new();
@@ -108,14 +109,17 @@ fn main() {
                     drag_register_click_system,
                     drag_check_system,
                     drag_update_system,
+                    drag_autoscroll_system,
                     drag_preview_system,
                     drag_end_system.in_set(StateUpdate),
                 )
                     .chain(),
                 persist_favorites_system,
+                persist_dock_order_system,
                 // Must see the drag before reset_positions_system cancels it.
                 exit_on_esc_or_q,
                 reset_positions_system,
+                scroll_smoothing_system,
                 reorder_icons_system.in_set(ReorderIcons),
                 process_hyprland_events,
                 keybind_launch_visible_icons,
@@ -164,43 +168,26 @@ fn setup(
     let start_pos = Vec2::new(start_x, start_y);
     let center = Vec2::new(0.0, window_height * config.tilt_y);
 
-    let mut all_apps: Vec<(String, Option<Client>, bool)> = Vec::new();
-    let mut initial_order = Vec::new();
-    let mut processed_classes = HashSet::new();
-
-    // Primeiro, adiciona os favoritos na ordem salva
-    for fav_class in &favorites.0 {
-        if processed_classes.contains(fav_class) {
-            continue;
-        }
-
-        let client = client_list.0.iter().find(|c| &c.class == fav_class).cloned();
-        all_apps.push((fav_class.clone(), client.clone(), true));
-
-        if let Some(client) = client {
-            initial_order.push(client.address.clone());
-        } else {
-            initial_order.push(format!("pinned:{}", fav_class));
-        }
-        processed_classes.insert(fav_class.clone());
-    }
-
-    // Depois, adiciona as aplicações não-favoritas que estão abertas
-    for client in &client_list.0 {
-        if !processed_classes.contains(&client.class) {
-            all_apps.push((client.class.clone(), Some(client.clone()), false));
-            initial_order.push(client.address.clone());
-            processed_classes.insert(client.class.clone());
-        }
-    }
-
+    // One icon per open window, like windows opened later (handle_hypr_open_window).
+    let entries = initial_dock_entries(&load_dock_order(), &favorites.0, &client_list.0);
+    let initial_order: Vec<String> = entries
+        .iter()
+        .map(|entry| match &entry.client {
+            Some(client) => client.address.clone(),
+            None => format!("pinned:{}", entry.class),
+        })
+        .collect();
     commands.insert_resource(DockOrder(initial_order));
+    let all_apps: Vec<(String, Option<Client>, bool)> = entries
+        .into_iter()
+        .map(|entry| (entry.class, entry.client, entry.is_favorite))
+        .collect();
 
     let direction = (center - start_pos).normalize_or_zero();
 
     for (index, (class, client_opt, is_favorite)) in all_apps.iter().enumerate() {
         let (translation, scale) =
-            calculate_icon_transform(index, start_pos, direction, &config, Vec2::ZERO);
+            calculate_icon_transform(index as f32, start_pos, direction, &config);
         let transform = Transform {
             translation,
             scale: Vec3::splat(scale),
@@ -579,7 +566,7 @@ fn process_new_windows(
         let direction = (center - start_pos).normalize_or_zero();
 
         let (translation, scale) =
-            calculate_icon_transform(dock_order.0.len() - 1, start_pos, direction, config, Vec2::ZERO);
+            calculate_icon_transform((dock_order.0.len() - 1) as f32, start_pos, direction, config);
         let transform = Transform {
             translation,
             scale: Vec3::splat(scale),
@@ -771,7 +758,7 @@ fn handle_hypr_open_window(
     let direction = (center - start_pos).normalize_or_zero();
 
     let (translation, scale) =
-        calculate_icon_transform(dock_order.0.len() - 1, start_pos, direction, config, Vec2::ZERO);
+        calculate_icon_transform((dock_order.0.len() - 1) as f32, start_pos, direction, config);
     let transform = Transform {
         translation,
         scale: Vec3::splat(scale),

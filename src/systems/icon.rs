@@ -1,6 +1,8 @@
 use crate::types::*;
 use crate::config::Config;
-use crate::utils::{calculate_icon_transform, save_favorites, title_transform_scale};
+use crate::utils::{
+    calculate_icon_transform, dock_order_classes, save_dock_order, save_favorites, title_transform_scale,
+};
 use crate::{IconText, Favorite, Favorites};
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
@@ -41,7 +43,6 @@ pub fn reorder_icons_system(
     windows: Query<&Window, With<PrimaryWindow>>,
     scroll_state: Res<ScrollState>,
     config: Res<Config>,
-    ui_state: Res<UiState>,
     mut reorder_trigger: ResMut<ReorderTrigger>,
 ) {
     if reorder_trigger.0 {
@@ -95,23 +96,12 @@ pub fn reorder_icons_system(
 
     for (index, address) in dock_order.0.iter().enumerate() {
         let (translation, scale) =
-            calculate_icon_transform(index, start_pos, direction, &config, scroll_state.offset);
+            calculate_icon_transform(index as f32 - scroll_state.position, start_pos, direction, &config);
 
-        for (entity, icon_address, _, mut transform, mut hover, _) in q_icons.iter_mut() {
+        // Only the targets: hover_animation_system eases every icon toward them,
+        // and the dragged one follows the cursor (drag_update_system).
+        for (_, icon_address, _, _, mut hover, _) in q_icons.iter_mut() {
             if icon_address.0 == *address {
-                // The dragged icon follows the cursor (drag_update_system); its
-                // slot still updates so it animates there on drop or cancel.
-                if ui_state.dragging != Some(entity) {
-                    let current_pos = transform.translation;
-                    let target_pos = translation;
-
-                    transform.translation = Vec3::new(
-                        lerp(current_pos.x, target_pos.x, 0.2),
-                        lerp(current_pos.y, target_pos.y, 0.2),
-                        target_pos.z,
-                    );
-                }
-
                 hover.original_position = translation.truncate();
                 hover.original_z = translation.z;
                 hover.original_scale = scale;
@@ -123,6 +113,28 @@ pub fn reorder_icons_system(
 
     reorder_trigger.0 = false;
 }
+
+/// Saves the dock order, as classes, whenever it changes so the next session
+/// restores it (`initial_dock_entries`). Skipped mid-drag, since the preview
+/// reorders on every slot change; the drop or the cancel is saved.
+pub fn persist_dock_order_system(
+    dock_order: Res<DockOrder>,
+    ui_state: Res<UiState>,
+    icons: Query<(&ClientAddress, &ClientClass)>,
+    mut saved: Local<Option<Vec<String>>>,
+) {
+    if ui_state.dragging.is_some() {
+        return;
+    }
+    let icons: Vec<(String, String)> =
+        icons.iter().map(|(address, class)| (address.0.clone(), class.0.clone())).collect();
+    let classes = dock_order_classes(&dock_order.0, &icons);
+    if saved.as_ref() != Some(&classes) {
+        save_dock_order(&classes);
+        *saved = Some(classes);
+    }
+}
+
 /// Persists favorites whose order changed without going through
 /// `toggle_favorite` (which saves on its own), e.g. after a drag.
 pub fn persist_favorites_system(favorites: Res<Favorites>) {
@@ -131,6 +143,3 @@ pub fn persist_favorites_system(favorites: Res<Favorites>) {
     }
 }
 
-fn lerp(start: f32, end: f32, t: f32) -> f32 {
-    start + (end - start) * t
-}

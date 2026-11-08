@@ -2,23 +2,27 @@
 //! Input is queued as `InputEvent`s and drained by the runner into Bevy.
 
 use bevy::input::ButtonState;
-use bevy::log::debug;
+use bevy::log::{debug, warn};
 use bevy::input::keyboard::KeyCode;
 use bevy::input::mouse::MouseButton;
 use bevy::math::Vec2;
 use smithay_client_toolkit::{
-    compositor::CompositorHandler,
+    compositor::{CompositorHandler, CompositorState},
     delegate_compositor, delegate_keyboard, delegate_layer, delegate_output, delegate_pointer,
-    delegate_registry, delegate_seat,
+    delegate_registry, delegate_seat, delegate_shm,
     output::{OutputHandler, OutputState},
     registry::{ProvidesRegistryState, RegistryState},
     registry_handlers,
     seat::{
         keyboard::{KeyEvent, KeyboardHandler, Keysym, Modifiers},
-        pointer::{PointerEvent, PointerEventKind, PointerHandler},
+        pointer::{CursorIcon, PointerEvent, PointerEventKind, PointerHandler, ThemeSpec, ThemedPointer},
         Capability, SeatHandler, SeatState,
     },
-    shell::wlr_layer::{LayerShellHandler, LayerSurface, LayerSurfaceConfigure},
+    shell::{
+        wlr_layer::{LayerShellHandler, LayerSurface, LayerSurfaceConfigure},
+        WaylandSurface,
+    },
+    shm::{Shm, ShmHandler},
 };
 use wayland_client::{
     protocol::{wl_keyboard, wl_output, wl_pointer, wl_seat, wl_surface},
@@ -35,19 +39,36 @@ pub enum InputEvent {
     Key { scan_code: u32, key_code: Option<KeyCode>, state: ButtonState },
 }
 
+/// Cursor shown over the dock's icons.
+const DOCK_CURSOR: CursorIcon = CursorIcon::Default;
+
 pub struct WaylandState {
     pub registry: RegistryState,
+    pub compositor: CompositorState,
+    pub shm: Shm,
     pub seat: SeatState,
     pub output: OutputState,
-    pub layer: LayerSurface,
+    /// Created right after the first roundtrip, once outputs are known.
+    pub layer: Option<LayerSurface>,
     pub keyboard: Option<wl_keyboard::WlKeyboard>,
-    pub pointer: Option<wl_pointer::WlPointer>,
+    /// Sets the cursor through `wp_cursor_shape_v1`, or draws it from the
+    /// cursor theme when the compositor lacks that protocol.
+    pub pointer: Option<ThemedPointer>,
     /// Logical size from the last configure, until the runner applies it.
     pub configured_size: Option<(u32, u32)>,
     /// Integer buffer scale of the outputs the surface is on, until applied.
     pub scale_factor: Option<i32>,
     pub closed: bool,
     pub pending: Vec<InputEvent>,
+}
+
+impl WaylandState {
+    pub fn surface(&self) -> &wl_surface::WlSurface {
+        self.layer
+            .as_ref()
+            .expect("layer surface is created in LayerShellBackend::connect")
+            .wl_surface()
+    }
 }
 
 impl CompositorHandler for WaylandState {
@@ -120,7 +141,12 @@ impl SeatHandler for WaylandState {
             self.keyboard = self.seat.get_keyboard(qh, &seat, None).ok();
         }
         if capability == Capability::Pointer && self.pointer.is_none() {
-            self.pointer = self.seat.get_pointer(qh, &seat).ok();
+            let cursor_surface = self.compositor.create_surface(qh);
+            self.pointer = self
+                .seat
+                .get_pointer_with_theme(qh, &seat, self.shm.wl_shm(), cursor_surface, ThemeSpec::default())
+                .map_err(|e| warn!("No pointer for the dock: {e}"))
+                .ok();
         }
     }
 
@@ -138,7 +164,7 @@ impl SeatHandler for WaylandState {
         }
         if capability == Capability::Pointer {
             if let Some(pointer) = self.pointer.take() {
-                pointer.release();
+                pointer.pointer().release();
             }
         }
     }
@@ -149,7 +175,7 @@ impl SeatHandler for WaylandState {
 impl PointerHandler for WaylandState {
     fn pointer_frame(
         &mut self,
-        _: &Connection,
+        conn: &Connection,
         _: &QueueHandle<Self>,
         _: &wl_pointer::WlPointer,
         events: &[PointerEvent],
@@ -159,6 +185,13 @@ impl PointerHandler for WaylandState {
             let input = match event.kind {
                 PointerEventKind::Enter { .. } => {
                     debug!("Pointer entered at {position}");
+                    // Without this the compositor keeps the cursor of the
+                    // surface the pointer came from (e.g. a text I-beam).
+                    if let Some(pointer) = &self.pointer {
+                        if let Err(e) = pointer.set_cursor(conn, DOCK_CURSOR) {
+                            warn!("Failed to set the cursor: {e}");
+                        }
+                    }
                     InputEvent::CursorMoved(position)
                 }
                 PointerEventKind::Motion { .. } => InputEvent::CursorMoved(position),
@@ -193,6 +226,7 @@ impl KeyboardHandler for WaylandState {
         _: &[u32],
         _: &[Keysym],
     ) {
+        debug!("Keyboard focus gained");
     }
 
     fn leave(
@@ -203,6 +237,7 @@ impl KeyboardHandler for WaylandState {
         _: &wl_surface::WlSurface,
         _: u32,
     ) {
+        debug!("Keyboard focus lost");
     }
 
     fn press_key(
@@ -246,6 +281,12 @@ impl KeyboardHandler for WaylandState {
     }
 }
 
+impl ShmHandler for WaylandState {
+    fn shm_state(&mut self) -> &mut Shm {
+        &mut self.shm
+    }
+}
+
 impl ProvidesRegistryState for WaylandState {
     fn registry(&mut self) -> &mut RegistryState {
         &mut self.registry
@@ -260,3 +301,4 @@ delegate_seat!(WaylandState);
 delegate_pointer!(WaylandState);
 delegate_keyboard!(WaylandState);
 delegate_registry!(WaylandState);
+delegate_shm!(WaylandState);
