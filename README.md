@@ -25,7 +25,7 @@ A modern, animated dock for Hyprland built with Rust and Bevy Engine.
 
 ## Appearance
 
-[![appearance](https://img.youtube.com/vi/yGkF93IRhU8/hqdefault.jpg)](https://www.youtube.com/embed/yGkF93IRhU8)
+[![anny-dock running on Hyprland (click to watch the video)](https://img.youtube.com/vi/yGkF93IRhU8/maxresdefault.jpg)](https://www.youtube.com/watch?v=yGkF93IRhU8)
 
 ## Features
 
